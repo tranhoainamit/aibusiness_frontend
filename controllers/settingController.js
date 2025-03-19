@@ -55,163 +55,189 @@ const bulkUpdateValidation = [
     .withMessage('Giá trị không được để trống')
 ];
 
-class SettingController {
-  // Tạo cài đặt mới
-  static async create(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      // Kiểm tra key đã tồn tại
-      const exists = await Setting.exists(req.body.key);
-      if (exists) {
-        return res.status(400).json({ message: 'Key đã tồn tại' });
-      }
-
-      const settingId = await Setting.create(req.body);
-      const setting = await Setting.findByKey(req.body.key);
-
-      res.status(201).json({
-        message: 'Tạo cài đặt thành công',
-        setting
+// Tạo cài đặt mới
+const create = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
       });
-    } catch (error) {
-      console.error('Lỗi tạo cài đặt:', error);
-      res.status(500).json({ message: 'Lỗi khi tạo cài đặt' });
     }
-  }
 
-  // Lấy tất cả cài đặt với bộ lọc
-  static async getAll(req, res) {
-    try {
-      const filters = {
-        is_public: req.query.is_public === 'true' ? true : 
-                   req.query.is_public === 'false' ? false : undefined,
-        group: req.query.group,
-        type: req.query.type,
-        search: req.query.search,
-        page: req.query.page,
-        limit: req.query.limit
-      };
-
-      const result = await Setting.findAll(filters);
-      res.json(result);
-    } catch (error) {
-      console.error('Lỗi lấy danh sách cài đặt:', error);
-      res.status(500).json({ message: 'Lỗi khi lấy danh sách cài đặt' });
+    // Kiểm tra key đã tồn tại
+    const exists = await Setting.exists(req.body.key);
+    if (exists) {
+      return res.status(400).json({ message: 'Key đã tồn tại' });
     }
-  }
 
-  // Lấy cài đặt công khai
-  static async getPublic(req, res) {
-    try {
-      const settings = await Setting.getPublicSettings();
-      res.json(settings);
-    } catch (error) {
-      console.error('Lỗi lấy cài đặt công khai:', error);
-      res.status(500).json({ message: 'Lỗi khi lấy cài đặt công khai' });
+    const settingId = await Setting.create(req.body);
+    const setting = await Setting.findByKey(req.body.key);
+
+    res.status(201).json({
+      message: 'Tạo cài đặt thành công',
+      data: setting
+    });
+  } catch (error) {
+    console.error('Lỗi tạo cài đặt:', error);
+    res.status(500).json({ message: 'Lỗi khi tạo cài đặt' });
+  }
+};
+
+// Lấy tất cả cài đặt với bộ lọc
+const getAll = async (req, res) => {
+  try {
+    const filters = {
+      is_public: req.query.is_public === 'true' ? true : 
+                 req.query.is_public === 'false' ? false : undefined,
+      group: req.query.group,
+      type: req.query.type,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit
+    };
+
+    const result = await Setting.findAll(filters);
+    res.json({
+      message: 'Lấy danh sách cài đặt thành công',
+      data: result
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách cài đặt:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách cài đặt' });
+  }
+};
+
+// Lấy cài đặt công khai
+const getPublic = async (req, res) => {
+  try {
+    const settings = await Setting.getPublicSettings();
+    res.json({
+      message: 'Lấy cài đặt công khai thành công',
+      data: settings
+    });
+  } catch (error) {
+    console.error('Lỗi lấy cài đặt công khai:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy cài đặt công khai' });
+  }
+};
+
+// Lấy cài đặt theo nhóm
+const getByGroup = async (req, res) => {
+  try {
+    const settings = await Setting.getByGroup(req.params.group);
+    res.json({
+      message: 'Lấy cài đặt theo nhóm thành công',
+      data: settings
+    });
+  } catch (error) {
+    console.error('Lỗi lấy cài đặt theo nhóm:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy cài đặt theo nhóm' });
+  }
+};
+
+// Lấy cài đặt theo key
+const getByKey = async (req, res) => {
+  try {
+    const setting = await Setting.findByKey(req.params.key);
+    if (!setting) {
+      return res.status(404).json({ message: 'Không tìm thấy cài đặt' });
     }
+    res.json({
+      message: 'Lấy thông tin cài đặt thành công',
+      data: setting
+    });
+  } catch (error) {
+    console.error('Lỗi lấy cài đặt:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy thông tin cài đặt' });
   }
+};
 
-  // Lấy cài đặt theo nhóm
-  static async getByGroup(req, res) {
-    try {
-      const settings = await Setting.getByGroup(req.params.group);
-      res.json(settings);
-    } catch (error) {
-      console.error('Lỗi lấy cài đặt theo nhóm:', error);
-      res.status(500).json({ message: 'Lỗi khi lấy cài đặt theo nhóm' });
+// Cập nhật cài đặt
+const update = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
+      });
     }
-  }
 
-  // Lấy cài đặt theo key
-  static async getByKey(req, res) {
-    try {
-      const setting = await Setting.findByKey(req.params.key);
-      if (!setting) {
-        return res.status(404).json({ message: 'Không tìm thấy cài đặt' });
-      }
-      res.json(setting);
-    } catch (error) {
-      console.error('Lỗi lấy cài đặt:', error);
-      res.status(500).json({ message: 'Lỗi khi lấy thông tin cài đặt' });
+    const setting = await Setting.findByKey(req.params.key);
+    if (!setting) {
+      return res.status(404).json({ message: 'Không tìm thấy cài đặt' });
     }
-  }
 
-  // Cập nhật cài đặt
-  static async update(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const setting = await Setting.findByKey(req.params.key);
-      if (!setting) {
-        return res.status(404).json({ message: 'Không tìm thấy cài đặt' });
-      }
-
-      const updated = await Setting.update(req.params.key, req.body);
-      if (updated) {
-        const updatedSetting = await Setting.findByKey(req.params.key);
-        res.json({
-          message: 'Cập nhật cài đặt thành công',
-          setting: updatedSetting
-        });
-      } else {
-        res.status(400).json({ message: 'Cập nhật cài đặt thất bại' });
-      }
-    } catch (error) {
-      console.error('Lỗi cập nhật cài đặt:', error);
-      res.status(500).json({ message: 'Lỗi khi cập nhật cài đặt' });
+    const updated = await Setting.update(req.params.key, req.body);
+    if (updated) {
+      const updatedSetting = await Setting.findByKey(req.params.key);
+      res.json({
+        message: 'Cập nhật cài đặt thành công',
+        data: updatedSetting
+      });
+    } else {
+      res.status(400).json({ message: 'Cập nhật cài đặt thất bại' });
     }
+  } catch (error) {
+    console.error('Lỗi cập nhật cài đặt:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật cài đặt' });
   }
+};
 
-  // Cập nhật nhiều cài đặt cùng lúc
-  static async bulkUpdate(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const updated = await Setting.bulkUpdate(req.body.settings);
-      if (updated) {
-        res.json({ message: 'Cập nhật hàng loạt cài đặt thành công' });
-      } else {
-        res.status(400).json({ message: 'Cập nhật hàng loạt cài đặt thất bại' });
-      }
-    } catch (error) {
-      console.error('Lỗi cập nhật hàng loạt cài đặt:', error);
-      res.status(500).json({ message: 'Lỗi khi cập nhật hàng loạt cài đặt' });
+// Cập nhật nhiều cài đặt cùng lúc
+const bulkUpdate = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
+      });
     }
-  }
 
-  // Xóa cài đặt
-  static async delete(req, res) {
-    try {
-      const setting = await Setting.findByKey(req.params.key);
-      if (!setting) {
-        return res.status(404).json({ message: 'Không tìm thấy cài đặt' });
-      }
-
-      const deleted = await Setting.delete(req.params.key);
-      if (deleted) {
-        res.json({ message: 'Xóa cài đặt thành công' });
-      } else {
-        res.status(400).json({ message: 'Xóa cài đặt thất bại' });
-      }
-    } catch (error) {
-      console.error('Lỗi xóa cài đặt:', error);
-      res.status(500).json({ message: 'Lỗi khi xóa cài đặt' });
+    const updated = await Setting.bulkUpdate(req.body.settings);
+    if (updated) {
+      res.json({ message: 'Cập nhật hàng loạt cài đặt thành công' });
+    } else {
+      res.status(400).json({ message: 'Cập nhật hàng loạt cài đặt thất bại' });
     }
+  } catch (error) {
+    console.error('Lỗi cập nhật hàng loạt cài đặt:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật hàng loạt cài đặt' });
   }
-}
+};
+
+// Xóa cài đặt
+const deleteSetting = async (req, res) => {
+  try {
+    const setting = await Setting.findByKey(req.params.key);
+    if (!setting) {
+      return res.status(404).json({ message: 'Không tìm thấy cài đặt' });
+    }
+
+    const deleted = await Setting.delete(req.params.key);
+    if (deleted) {
+      res.json({ message: 'Xóa cài đặt thành công' });
+    } else {
+      res.status(400).json({ message: 'Xóa cài đặt thất bại' });
+    }
+  } catch (error) {
+    console.error('Lỗi xóa cài đặt:', error);
+    res.status(500).json({ message: 'Lỗi khi xóa cài đặt' });
+  }
+};
 
 module.exports = {
-  SettingController,
+  create,
+  getAll,
+  getPublic,
+  getByGroup,
+  getByKey,
+  update,
+  bulkUpdate,
+  delete: deleteSetting,
   settingValidation,
   bulkUpdateValidation
 }; 

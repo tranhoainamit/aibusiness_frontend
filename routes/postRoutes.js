@@ -3,19 +3,36 @@ const router = express.Router();
 const postController = require('../controllers/postController');
 const { auth, checkRole } = require('../middleware/auth');
 
-// Public routes
+// ------------------------------------------
+// PUBLIC ROUTES - No authentication required
+// ------------------------------------------
+// Get all posts with filtering and pagination
 router.get('/', postController.getAll);
+
+// Get post by slug
 router.get('/slug/:slug', postController.getBySlug);
+
+// Get post by ID
 router.get('/:id', postController.getById);
 
-// Protected routes
+// ------------------------------------------
+// PROTECTED ROUTES - Authentication required
+// ------------------------------------------
 router.use(auth);
 
-// Create post - Admin and Editor (role 2) only
-router.post('/', checkRole([2, 3]), postController.create);
+// ------------------------------------------
+// CONTENT MANAGEMENT - Admin and Editor only
+// ------------------------------------------
+// Create new post (Admin and Editor only)
+router.post('/', checkRole([2, 3]), postController.postValidation, postController.create);
 
-// Update and delete - Admin, Editor, or post author
-router.put('/:id', auth, postController.update);
-router.delete('/:id', auth, postController.delete);
+// ------------------------------------------
+// POST MANAGEMENT - Author, Admin, or Editor
+// ------------------------------------------
+// Update existing post
+router.put('/:id', postController.postValidation, postController.update);
+
+// Delete post
+router.delete('/:id', postController.delete);
 
 module.exports = router; 

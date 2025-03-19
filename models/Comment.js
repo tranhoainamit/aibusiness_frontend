@@ -1,88 +1,96 @@
 const db = require('../config/database');
+const { validationResult } = require('express-validator');
 
-class Comment {
-  // Create a new comment
-  static async create(commentData) {
+// Model bình luận
+const Comment = {
+  // Tạo bình luận mới
+  create: async (commentData) => {
     try {
       const {
         user_id,
+        item_id,
+        item_type,
         content,
-        parent_id = null,
-        lesson_id = null,
-        post_id = null,
-        is_active = true
+        parent_id,
+        is_approved
       } = commentData;
+
+      // Validate dữ liệu đầu vào
+      if (!user_id || !item_id || !item_type || !content) {
+        throw new Error('Thiếu thông tin bắt buộc');
+      }
+
+      // Validate loại item
+      const validTypes = ['course', 'post'];
+      if (!validTypes.includes(item_type)) {
+        throw new Error('Loại item không hợp lệ');
+      }
 
       const [result] = await db.execute(
         `INSERT INTO comments (
-          user_id, content, parent_id, lesson_id,
-          post_id, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [user_id, content, parent_id, lesson_id, post_id, is_active]
+          user_id, item_id, item_type, content, parent_id, is_approved
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          user_id,
+          item_id,
+          item_type,
+          content,
+          parent_id || null,
+          is_approved || false
+        ]
       );
 
       return result.insertId;
     } catch (error) {
-      throw new Error('Error creating comment: ' + error.message);
+      console.error('Lỗi tạo bình luận:', error);
+      throw new Error('Lỗi tạo bình luận: ' + error.message);
     }
-  }
+  },
 
-  // Find comment by ID with user info
-  static async findById(id) {
+  // Tìm bình luận theo ID
+  findById: async (id) => {
     try {
       const [rows] = await db.execute(
-        `SELECT c.*, u.fullname as user_name, u.avatar_url,
-                COUNT(r.id) as replies_count
+        `SELECT c.*, 
+                u.username as user_name, u.full_name as user_full_name,
+                CASE 
+                  WHEN c.item_type = 'course' THEN co.title
+                  WHEN c.item_type = 'post' THEN p.title
+                END as item_title
          FROM comments c
-         LEFT JOIN users u ON c.user_id = u.id
-         LEFT JOIN comments r ON r.parent_id = c.id
-         WHERE c.id = ?
-         GROUP BY c.id`,
+         JOIN users u ON c.user_id = u.id
+         LEFT JOIN courses co ON c.item_type = 'course' AND c.item_id = co.id
+         LEFT JOIN posts p ON c.item_type = 'post' AND c.item_id = p.id
+         WHERE c.id = ?`,
         [id]
       );
       return rows[0];
     } catch (error) {
-      throw new Error('Error finding comment: ' + error.message);
+      console.error('Lỗi tìm bình luận theo ID:', error);
+      throw new Error('Lỗi tìm bình luận: ' + error.message);
     }
-  }
+  },
 
-  // Get all comments with filters
-  static async findAll(filters = {}) {
+  // Tìm tất cả bình luận của một item
+  findByItemId: async (itemId, itemType, filters = {}) => {
     try {
       let query = `
-        SELECT c.*, u.fullname as user_name, u.avatar_url,
-               COUNT(r.id) as replies_count
+        SELECT c.*, 
+                u.username as user_name, u.full_name as user_full_name
         FROM comments c
-        LEFT JOIN users u ON c.user_id = u.id
-        LEFT JOIN comments r ON r.parent_id = c.id
-        WHERE c.parent_id IS NULL
+        JOIN users u ON c.user_id = u.id
+        WHERE c.item_id = ? AND c.item_type = ? AND c.parent_id IS NULL
       `;
-      const params = [];
+      const params = [itemId, itemType];
 
-      if (filters.lesson_id) {
-        query += ' AND c.lesson_id = ?';
-        params.push(filters.lesson_id);
+      if (filters.is_approved !== undefined) {
+        query += ' AND c.is_approved = ?';
+        params.push(filters.is_approved);
       }
 
-      if (filters.post_id) {
-        query += ' AND c.post_id = ?';
-        params.push(filters.post_id);
-      }
-
-      if (filters.user_id) {
-        query += ' AND c.user_id = ?';
-        params.push(filters.user_id);
-      }
-
-      if (filters.is_active !== undefined) {
-        query += ' AND c.is_active = ?';
-        params.push(filters.is_active);
-      }
-
-      query += ' GROUP BY c.id';
       query += ' ORDER BY c.created_at DESC';
 
-      // Add pagination
+      // Thêm phân trang
       const page = parseInt(filters.page) || 1;
       const limit = parseInt(filters.limit) || 10;
       const offset = (page - 1) * limit;
@@ -92,20 +100,17 @@ class Comment {
 
       const [rows] = await db.execute(query, params);
 
-      // Get total count for pagination
+      // Lấy tổng số lượng cho phân trang
       let countQuery = `
         SELECT COUNT(*) as total 
         FROM comments c
-        WHERE c.parent_id IS NULL
+        WHERE c.item_id = ? AND c.item_type = ? AND c.parent_id IS NULL
       `;
-      if (filters.lesson_id) countQuery += ' AND c.lesson_id = ?';
-      if (filters.post_id) countQuery += ' AND c.post_id = ?';
-      if (filters.user_id) countQuery += ' AND c.user_id = ?';
-      if (filters.is_active !== undefined) countQuery += ' AND c.is_active = ?';
+      if (filters.is_approved !== undefined) countQuery += ' AND c.is_approved = ?';
 
       const [countResult] = await db.execute(
         countQuery,
-        params.slice(0, -2) // Remove limit and offset
+        params.slice(0, -2) // Loại bỏ limit và offset
       );
 
       return {
@@ -115,124 +120,172 @@ class Comment {
         totalPages: Math.ceil(countResult[0].total / limit)
       };
     } catch (error) {
-      throw new Error('Error finding comments: ' + error.message);
+      console.error('Lỗi tìm danh sách bình luận:', error);
+      throw new Error('Lỗi tìm danh sách bình luận: ' + error.message);
     }
-  }
+  },
 
-  // Get replies for a comment
-  static async getReplies(commentId, page = 1, limit = 10) {
+  // Tìm tất cả bình luận của người dùng
+  findByUserId: async (userId, filters = {}) => {
     try {
-      const offset = (page - 1) * limit;
-      const [rows] = await db.execute(
-        `SELECT c.*, u.fullname as user_name, u.avatar_url
-         FROM comments c
-         LEFT JOIN users u ON c.user_id = u.id
-         WHERE c.parent_id = ?
-         ORDER BY c.created_at ASC
-         LIMIT ? OFFSET ?`,
-        [commentId, limit, offset]
-      );
+      let query = `
+        SELECT c.*, 
+                CASE 
+                  WHEN c.item_type = 'course' THEN co.title
+                  WHEN c.item_type = 'post' THEN p.title
+                END as item_title,
+                CASE 
+                  WHEN c.item_type = 'course' THEN co.slug
+                  WHEN c.item_type = 'post' THEN p.slug
+                END as item_slug
+        FROM comments c
+        LEFT JOIN courses co ON c.item_type = 'course' AND c.item_id = co.id
+        LEFT JOIN posts p ON c.item_type = 'post' AND c.item_id = p.id
+        WHERE c.user_id = ?
+      `;
+      const params = [userId];
 
-      // Get total replies count
+      if (filters.item_type) {
+        query += ' AND c.item_type = ?';
+        params.push(filters.item_type);
+      }
+
+      if (filters.is_approved !== undefined) {
+        query += ' AND c.is_approved = ?';
+        params.push(filters.is_approved);
+      }
+
+      query += ' ORDER BY c.created_at DESC';
+
+      // Thêm phân trang
+      const page = parseInt(filters.page) || 1;
+      const limit = parseInt(filters.limit) || 10;
+      const offset = (page - 1) * limit;
+
+      query += ' LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+
+      const [rows] = await db.execute(query, params);
+
+      // Lấy tổng số lượng cho phân trang
+      let countQuery = `
+        SELECT COUNT(*) as total 
+        FROM comments c
+        WHERE c.user_id = ?
+      `;
+      if (filters.item_type) countQuery += ' AND c.item_type = ?';
+      if (filters.is_approved !== undefined) countQuery += ' AND c.is_approved = ?';
+
       const [countResult] = await db.execute(
-        'SELECT COUNT(*) as total FROM comments WHERE parent_id = ?',
-        [commentId]
+        countQuery,
+        params.slice(0, -2) // Loại bỏ limit và offset
       );
 
       return {
-        replies: rows,
+        comments: rows,
         total: countResult[0].total,
         page,
         totalPages: Math.ceil(countResult[0].total / limit)
       };
     } catch (error) {
-      throw new Error('Error getting replies: ' + error.message);
+      console.error('Lỗi tìm danh sách bình luận:', error);
+      throw new Error('Lỗi tìm danh sách bình luận: ' + error.message);
     }
-  }
+  },
 
-  // Update comment
-  static async update(id, commentData) {
+  // Tìm tất cả phản hồi của một bình luận
+  findReplies: async (commentId) => {
     try {
-      const { content, is_active } = commentData;
+      const [rows] = await db.execute(
+        `SELECT c.*, 
+                u.username as user_name, u.full_name as user_full_name
+         FROM comments c
+         JOIN users u ON c.user_id = u.id
+         WHERE c.parent_id = ?
+         ORDER BY c.created_at ASC`,
+        [commentId]
+      );
+      return rows;
+    } catch (error) {
+      console.error('Lỗi tìm danh sách phản hồi:', error);
+      throw new Error('Lỗi tìm danh sách phản hồi: ' + error.message);
+    }
+  },
 
-      let query = 'UPDATE comments SET ';
+  // Cập nhật bình luận
+  update: async (id, commentData) => {
+    try {
+      const allowedFields = ['content', 'is_approved'];
       const updates = [];
-      const params = [];
+      const values = [];
 
-      if (content !== undefined) {
-        updates.push('content = ?');
-        params.push(content);
-      }
-      if (is_active !== undefined) {
-        updates.push('is_active = ?');
-        params.push(is_active);
+      for (const field of allowedFields) {
+        if (commentData[field] !== undefined) {
+          updates.push(`${field} = ?`);
+          values.push(commentData[field]);
+        }
       }
 
-      if (updates.length === 0) {
-        return false;
-      }
+      if (updates.length === 0) return false;
 
-      query += updates.join(', ') + ' WHERE id = ?';
-      params.push(id);
+      values.push(id);
+      const query = `
+        UPDATE comments SET 
+        ${updates.join(', ')}, 
+        updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
 
-      const [result] = await db.execute(query, params);
+      const [result] = await db.execute(query, values);
       return result.affectedRows > 0;
     } catch (error) {
-      throw new Error('Error updating comment: ' + error.message);
+      console.error('Lỗi cập nhật bình luận:', error);
+      throw new Error('Lỗi cập nhật bình luận: ' + error.message);
     }
-  }
+  },
 
-  // Delete comment
-  static async delete(id) {
+  // Xóa bình luận
+  delete: async (id) => {
     try {
-      // First, delete all replies
+      // Xóa tất cả phản hồi trước
       await db.execute('DELETE FROM comments WHERE parent_id = ?', [id]);
-      // Then delete the comment itself
+      
+      // Xóa bình luận chính
       const [result] = await db.execute('DELETE FROM comments WHERE id = ?', [id]);
       return result.affectedRows > 0;
     } catch (error) {
-      throw new Error('Error deleting comment: ' + error.message);
+      console.error('Lỗi xóa bình luận:', error);
+      throw new Error('Lỗi xóa bình luận: ' + error.message);
     }
-  }
+  },
 
-  // Check if comment exists
-  static async exists(id) {
+  // Lấy số lượng bình luận của một item
+  getItemCommentCount: async (itemId, itemType) => {
     try {
       const [rows] = await db.execute(
-        'SELECT id FROM comments WHERE id = ?',
+        'SELECT COUNT(*) as count FROM comments WHERE item_id = ? AND item_type = ?',
+        [itemId, itemType]
+      );
+      return rows[0].count;
+    } catch (error) {
+      console.error('Lỗi lấy số lượng bình luận:', error);
+      throw new Error('Lỗi lấy số lượng bình luận: ' + error.message);
+    }
+  },
+
+  // Kiểm tra bình luận có tồn tại
+  exists: async (id) => {
+    try {
+      const [rows] = await db.execute(
+        'SELECT EXISTS(SELECT 1 FROM comments WHERE id = ?) as exist',
         [id]
       );
-      return rows.length > 0;
+      return rows[0].exist === 1;
     } catch (error) {
-      throw new Error('Error checking comment existence: ' + error.message);
+      console.error('Lỗi kiểm tra sự tồn tại của bình luận:', error);
+      return false;
     }
   }
-
-  // Get comment counts
-  static async getCounts(filters = {}) {
-    try {
-      let query = 'SELECT COUNT(*) as total FROM comments WHERE 1=1';
-      const params = [];
-
-      if (filters.lesson_id) {
-        query += ' AND lesson_id = ?';
-        params.push(filters.lesson_id);
-      }
-      if (filters.post_id) {
-        query += ' AND post_id = ?';
-        params.push(filters.post_id);
-      }
-      if (filters.user_id) {
-        query += ' AND user_id = ?';
-        params.push(filters.user_id);
-      }
-
-      const [result] = await db.execute(query, params);
-      return result[0].total;
-    } catch (error) {
-      throw new Error('Error getting comment counts: ' + error.message);
-    }
-  }
-}
+};
 
 module.exports = Comment; 

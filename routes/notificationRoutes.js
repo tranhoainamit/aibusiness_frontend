@@ -1,26 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const {
-  NotificationController,
-  notificationValidation,
-  multipleNotificationValidation
-} = require('../controllers/notificationController');
+const notificationController = require('../controllers/notificationController');
 const { auth, checkRole } = require('../middleware/auth');
 
 // Tất cả các routes yêu cầu xác thực
 router.use(auth);
 
 // Routes cho người dùng
-router.get('/', NotificationController.getByUser);
-router.get('/unread-count', NotificationController.getUnreadCount);
-router.patch('/:id/mark-read', NotificationController.markAsRead);
-router.patch('/mark-all-read', NotificationController.markAllAsRead);
-router.delete('/:id', NotificationController.delete);
-router.delete('/read/all', NotificationController.deleteAllRead);
+router.get('/', notificationController.getByUser);
+router.get('/unread-count', notificationController.getUnreadCount);
+router.patch('/:id/mark-read', notificationController.markAsRead);
+router.patch('/mark-all-read', notificationController.markAllAsRead);
+router.delete('/:id', notificationController.delete);
+router.delete('/read/all', notificationController.deleteAllRead);
 
 // Routes cho admin
 router.use(checkRole([3]));
-router.post('/', notificationValidation, NotificationController.create);
-router.post('/multiple', multipleNotificationValidation, NotificationController.createMultiple);
+router.post('/', notificationController.notificationValidation, notificationController.create);
+router.post('/multiple', notificationController.multipleNotificationValidation, notificationController.createMultiple);
 
 module.exports = router; 

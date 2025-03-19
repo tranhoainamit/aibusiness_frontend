@@ -42,7 +42,7 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     // Accept only image files
     if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image files are allowed'));
+      return cb(new Error('Chỉ cho phép tải lên file hình ảnh'));
     }
     cb(null, true);
   }
@@ -54,186 +54,245 @@ const imageValidation = [
     .optional()
     .trim()
     .isLength({ max: 255 })
-    .withMessage('Alt text must not exceed 255 characters')
+    .withMessage('Văn bản thay thế không được vượt quá 255 ký tự')
 ];
 
-class ImageController {
-  // Upload new image
-  static async upload(req, res) {
-    try {
-      // Handle file upload
-      upload.single('image')(req, res, async (err) => {
-        if (err) {
-          if (err instanceof multer.MulterError) {
-            return res.status(400).json({ message: 'File upload error: ' + err.message });
-          }
-          return res.status(400).json({ message: err.message });
+// Upload new image
+const uploadImage = async (req, res) => {
+  try {
+    // Handle file upload
+    upload.single('image')(req, res, async (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          return res.status(400).json({ message: 'Lỗi khi tải file lên: ' + err.message });
         }
-
-        if (!req.file) {
-          return res.status(400).json({ message: 'No image file provided' });
-        }
-
-        // Validate other fields
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-          // Delete uploaded file if validation fails
-          fs.unlinkSync(req.file.path);
-          return res.status(400).json({ errors: errors.array() });
-        }
-
-        try {
-          // Create image record in database
-          const imageData = {
-            url: `/uploads/images/${req.file.filename}`,
-            alt_text: req.body.alt_text || null,
-            uploaded_by: req.user.id,
-            file_size: req.file.size
-          };
-
-          const imageId = await Image.create(imageData);
-          const image = await Image.findById(imageId);
-
-          res.status(201).json({
-            message: 'Image uploaded successfully',
-            image
-          });
-        } catch (error) {
-          // Delete uploaded file if database operation fails
-          fs.unlinkSync(req.file.path);
-          throw error;
-        }
-      });
-    } catch (error) {
-      console.error('Image upload error:', error);
-      res.status(500).json({ message: 'Error uploading image' });
-    }
-  }
-
-  // Get all images with filters
-  static async getAll(req, res) {
-    try {
-      const filters = {
-        uploaded_by: req.query.uploaded_by,
-        search: req.query.search,
-        start_date: req.query.start_date,
-        end_date: req.query.end_date,
-        page: req.query.page,
-        limit: req.query.limit
-      };
-
-      const result = await Image.findAll(filters);
-      res.json(result);
-    } catch (error) {
-      console.error('Get images error:', error);
-      res.status(500).json({ message: 'Error retrieving images' });
-    }
-  }
-
-  // Get image by ID
-  static async getById(req, res) {
-    try {
-      const image = await Image.findById(req.params.id);
-      if (!image) {
-        return res.status(404).json({ message: 'Image not found' });
+        return res.status(400).json({ message: err.message });
       }
-      res.json(image);
-    } catch (error) {
-      console.error('Get image error:', error);
-      res.status(500).json({ message: 'Error retrieving image' });
-    }
-  }
 
-  // Update image details
-  static async update(req, res) {
-    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'Không có file hình ảnh được cung cấp' });
+      }
+
+      // Validate other fields
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const image = await Image.findById(req.params.id);
-      if (!image) {
-        return res.status(404).json({ message: 'Image not found' });
-      }
-
-      // Check if user has permission to update
-      if (image.uploaded_by !== req.user.id && req.user.role_id !== 3) {
-        return res.status(403).json({ message: 'Permission denied' });
-      }
-
-      const updated = await Image.update(req.params.id, {
-        alt_text: req.body.alt_text
-      });
-
-      if (updated) {
-        const updatedImage = await Image.findById(req.params.id);
-        res.json({
-          message: 'Image updated successfully',
-          image: updatedImage
+        // Delete uploaded file if validation fails
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ 
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array() 
         });
-      } else {
-        res.status(400).json({ message: 'Failed to update image' });
       }
-    } catch (error) {
-      console.error('Update image error:', error);
-      res.status(500).json({ message: 'Error updating image' });
-    }
+
+      try {
+        // Create image record in database
+        const imageData = {
+          url: `/uploads/images/${req.file.filename}`,
+          alt_text: req.body.alt_text || null,
+          uploaded_by: req.user.id,
+          file_size: req.file.size
+        };
+
+        const imageId = await Image.create(imageData);
+        const image = await Image.findById(imageId);
+
+        res.status(201).json({
+          message: 'Tải ảnh lên thành công',
+          data: image
+        });
+      } catch (error) {
+        // Delete uploaded file if database operation fails
+        fs.unlinkSync(req.file.path);
+        throw error;
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi tải ảnh lên:', error);
+    res.status(500).json({ message: 'Lỗi khi tải ảnh lên' });
   }
+};
 
-  // Delete image
-  static async delete(req, res) {
+// Get all images with filters
+const getAll = async (req, res) => {
+  try {
+    const filters = {
+      uploaded_by: req.query.uploaded_by,
+      search: req.query.search,
+      start_date: req.query.start_date,
+      end_date: req.query.end_date,
+      page: req.query.page,
+      limit: req.query.limit
+    };
+
+    const result = await Image.findAll(filters);
+    res.json({
+      message: 'Lấy danh sách hình ảnh thành công',
+      data: result
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách hình ảnh:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách hình ảnh' });
+  }
+};
+
+// Get image by ID
+const getById = async (req, res) => {
+  try {
+    const image = await Image.findById(req.params.id);
+    if (!image) {
+      return res.status(404).json({ message: 'Không tìm thấy hình ảnh' });
+    }
+    res.json({
+      message: 'Lấy thông tin hình ảnh thành công',
+      data: image
+    });
+  } catch (error) {
+    console.error('Lỗi lấy thông tin hình ảnh:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy thông tin hình ảnh' });
+  }
+};
+
+// Update image details
+const update = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
+      });
+    }
+
+    const image = await Image.findById(req.params.id);
+    if (!image) {
+      return res.status(404).json({ message: 'Không tìm thấy hình ảnh' });
+    }
+
+    // Check if user has permission to update
+    if (image.uploaded_by !== req.user.id && req.user.role_id !== 3) {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+    }
+
+    const updated = await Image.update(req.params.id, {
+      alt_text: req.body.alt_text
+    });
+
+    if (updated) {
+      const updatedImage = await Image.findById(req.params.id);
+      res.json({
+        message: 'Cập nhật hình ảnh thành công',
+        data: updatedImage
+      });
+    } else {
+      res.status(400).json({ message: 'Cập nhật hình ảnh thất bại' });
+    }
+  } catch (error) {
+    console.error('Lỗi cập nhật hình ảnh:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật hình ảnh' });
+  }
+};
+
+// Delete image
+const deleteImage = async (req, res) => {
+  try {
+    const image = await Image.findById(req.params.id);
+    if (!image) {
+      return res.status(404).json({ message: 'Không tìm thấy hình ảnh' });
+    }
+
+    // Check if user has permission to delete
+    if (image.uploaded_by !== req.user.id && req.user.role_id !== 3) {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+    }
+
     try {
-      const image = await Image.findById(req.params.id);
-      if (!image) {
-        return res.status(404).json({ message: 'Image not found' });
-      }
-
-      // Check if user has permission to delete
-      if (image.uploaded_by !== req.user.id && req.user.role_id !== 3) {
-        return res.status(403).json({ message: 'Permission denied' });
-      }
-
-      // Delete file from storage
-      const filePath = path.join(__dirname, '..', image.url);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-
       const deleted = await Image.delete(req.params.id);
       if (deleted) {
-        res.json({ message: 'Image deleted successfully' });
+        // Delete file from storage only after successful DB deletion
+        const filePath = path.join(__dirname, '..', image.url);
+        try {
+          await fs.access(filePath); // Check if file exists
+          await fs.unlink(filePath); // Delete file
+        } catch (fileError) {
+          console.error('Lỗi xóa tệp hình ảnh:', fileError);
+          // Continue even if file deletion fails as the database record is already removed
+        }
+        res.json({ message: 'Xóa hình ảnh thành công' });
       } else {
-        res.status(400).json({ message: 'Failed to delete image' });
+        res.status(400).json({ message: 'Xóa hình ảnh thất bại' });
       }
-    } catch (error) {
-      console.error('Delete image error:', error);
-      res.status(500).json({ message: 'Error deleting image' });
-    }
-  }
-
-  // Get images by user
-  static async getByUser(req, res) {
-    try {
-      const userId = req.params.userId || req.user.id;
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-
-      // Check if user has permission to view other user's images
-      if (userId !== req.user.id && req.user.role_id !== 3) {
-        return res.status(403).json({ message: 'Permission denied' });
+    } catch (deleteError) {
+      // Handle specific errors from model
+      if (deleteError.message.includes('được sử dụng trong banner')) {
+        return res.status(400).json({ message: deleteError.message });
       }
-
-      const result = await Image.getByUser(userId, page, limit);
-      res.json(result);
-    } catch (error) {
-      console.error('Get user images error:', error);
-      res.status(500).json({ message: 'Error retrieving user images' });
+      throw deleteError;
     }
+  } catch (error) {
+    console.error('Lỗi xóa hình ảnh:', error);
+    res.status(500).json({ message: 'Lỗi khi xóa hình ảnh: ' + error.message });
   }
-}
+};
+
+// Get images by user
+const getByUser = async (req, res) => {
+  try {
+    const userId = req.params.userId || req.user.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    // Check if user has permission to view other user's images
+    if (userId !== req.user.id && req.user.role_id !== 3) {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+    }
+
+    const result = await Image.getByUser(userId, page, limit);
+    res.json({
+      message: 'Lấy danh sách hình ảnh của người dùng thành công',
+      data: result
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách hình ảnh của người dùng:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách hình ảnh của người dùng' });
+  }
+};
+
+// Get total storage used by user
+const getTotalStorage = async (req, res) => {
+  try {
+    const userId = req.params.userId || req.user.id;
+    
+    // Check if user has permission to view other user's storage
+    if (userId != req.user.id && req.user.role_id !== 3) {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+    }
+    
+    const totalBytes = await Image.getTotalStorageByUser(userId);
+    
+    // Convert to human-readable format
+    const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+    
+    res.json({
+      message: 'Lấy thông tin dung lượng thành công',
+      data: {
+        userId,
+        totalBytes,
+        totalMB: `${totalMB} MB`
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi lấy thông tin dung lượng:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy thông tin dung lượng: ' + error.message });
+  }
+};
 
 module.exports = {
-  ImageController,
+  upload: uploadImage,
+  getAll,
+  getById,
+  update,
+  delete: deleteImage,
+  getByUser,
+  getTotalStorage,
   imageValidation
 }; 

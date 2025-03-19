@@ -35,6 +35,7 @@ class Post {
 
       return result.insertId;
     } catch (error) {
+      console.error('Error creating post:', error);
       throw new Error('Error creating post: ' + error.message);
     }
   }
@@ -43,24 +44,16 @@ class Post {
   static async findById(id) {
     try {
       const [rows] = await db.execute(
-        `SELECT p.*, u.username, u.full_name as author_name, u.avatar_url as author_avatar,
-                (SELECT GROUP_CONCAT(c.name) 
-                 FROM categories c 
-                 JOIN category_items ci ON c.id = ci.category_id 
-                 WHERE ci.item_id = p.id AND ci.item_type = 'post'
-                ) as categories
+        `SELECT p.*, u.username, u.full_name as author_name, u.avatar_url
          FROM posts p
          LEFT JOIN users u ON p.author_id = u.id
          WHERE p.id = ?`,
         [id]
       );
       
-      const post = rows[0];
-      if (post) {
-        post.categories = post.categories ? post.categories.split(',') : [];
-      }
-      return post;
+      return rows[0];
     } catch (error) {
+      console.error('Error finding post by ID:', error);
       throw new Error('Error finding post: ' + error.message);
     }
   }
@@ -69,103 +62,116 @@ class Post {
   static async findBySlug(slug) {
     try {
       const [rows] = await db.execute(
-        `SELECT p.*, u.username, u.full_name as author_name, u.avatar_url as author_avatar,
-                (SELECT GROUP_CONCAT(c.name) 
-                 FROM categories c 
-                 JOIN category_items ci ON c.id = ci.category_id 
-                 WHERE ci.item_id = p.id AND ci.item_type = 'post'
-                ) as categories
+        `SELECT p.*, u.username, u.full_name as author_name, u.avatar_url
          FROM posts p
          LEFT JOIN users u ON p.author_id = u.id
          WHERE p.slug = ?`,
         [slug]
       );
       
-      const post = rows[0];
-      if (post) {
-        post.categories = post.categories ? post.categories.split(',') : [];
-      }
-      return post;
+      return rows[0];
     } catch (error) {
-      throw new Error('Error finding post by slug: ' + error.message);
+      console.error('Error finding post by slug:', error);
+      throw new Error('Error finding post: ' + error.message);
     }
   }
 
-  // Get all posts with filters
-  static async findAll(filters = {}) {
+  // Find all posts with filters
+  static async findAll({ 
+    author_id, 
+    status, 
+    search,
+    category_id,
+    page = 1, 
+    limit = 10 
+  }) {
     try {
       let query = `
-        SELECT p.*, u.username, u.full_name as author_name, u.avatar_url as author_avatar,
-               (SELECT GROUP_CONCAT(c.name) 
-                FROM categories c 
-                JOIN category_items ci ON c.id = ci.category_id 
-                WHERE ci.item_id = p.id AND ci.item_type = 'post'
-               ) as categories
+        SELECT 
+          p.*,
+          u.username, 
+          u.full_name as author_name, 
+          u.avatar_url,
+          COUNT(DISTINCT c.id) as comment_count
         FROM posts p
         LEFT JOIN users u ON p.author_id = u.id
-        WHERE 1=1
+        LEFT JOIN comments c ON c.post_id = p.id
       `;
-      const params = [];
 
-      if (filters.author_id) {
-        query += ' AND p.author_id = ?';
-        params.push(filters.author_id);
+      let queryParams = [];
+      let whereConditions = [];
+
+      // Add where conditions
+      if (author_id) {
+        whereConditions.push('p.author_id = ?');
+        queryParams.push(author_id);
       }
 
-      if (filters.status) {
-        query += ' AND p.status = ?';
-        params.push(filters.status);
+      if (status) {
+        whereConditions.push('p.status = ?');
+        queryParams.push(status);
       }
 
-      if (filters.search) {
-        query += ' AND (p.title LIKE ? OR p.content LIKE ?)';
-        params.push(`%${filters.search}%`, `%${filters.search}%`);
+      if (search) {
+        whereConditions.push('(p.title LIKE ? OR p.content LIKE ?)');
+        queryParams.push(`%${search}%`, `%${search}%`);
       }
 
-      if (filters.category_id) {
+      // If filtering by category
+      if (category_id) {
         query += `
-          AND EXISTS (
-            SELECT 1 FROM category_items ci 
-            WHERE ci.item_id = p.id 
-            AND ci.item_type = 'post' 
-            AND ci.category_id = ?
-          )
+          JOIN post_categories pc ON p.id = pc.post_id
         `;
-        params.push(filters.category_id);
+        whereConditions.push('pc.category_id = ?');
+        queryParams.push(category_id);
       }
 
-      // Add pagination
-      const page = parseInt(filters.page) || 1;
-      const limit = parseInt(filters.limit) || 10;
+      if (whereConditions.length) {
+        query += ' WHERE ' + whereConditions.join(' AND ');
+      }
+
+      query += `
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+
       const offset = (page - 1) * limit;
+      queryParams.push(parseInt(limit), offset);
 
-      query += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-      params.push(limit, offset);
+      const [rows] = await db.execute(query, queryParams);
 
-      const [rows] = await db.execute(query, params);
-      
-      // Process categories for each post
-      rows.forEach(post => {
-        post.categories = post.categories ? post.categories.split(',') : [];
-      });
+      // Get total count
+      let countQuery = `
+        SELECT COUNT(DISTINCT p.id) as total 
+        FROM posts p
+      `;
 
-      // Get total count for pagination
-      const [countResult] = await db.execute(
-        'SELECT COUNT(*) as total FROM posts p WHERE 1=1' +
-        (filters.author_id ? ' AND p.author_id = ?' : '') +
-        (filters.status ? ' AND p.status = ?' : '') +
-        (filters.search ? ' AND (p.title LIKE ? OR p.content LIKE ?)' : '') +
-        (filters.category_id ? ' AND EXISTS (SELECT 1 FROM category_items ci WHERE ci.item_id = p.id AND ci.item_type = "post" AND ci.category_id = ?)' : ''),
-        params.slice(0, -2) // Remove limit and offset
-      );
+      if (category_id) {
+        countQuery += `
+          JOIN post_categories pc ON p.id = pc.post_id
+        `;
+      }
+
+      if (whereConditions.length) {
+        countQuery += ' WHERE ' + whereConditions.join(' AND ');
+      }
+
+      const [countResult] = await db.execute(countQuery, queryParams.slice(0, -2));
+
+      // Get categories for each post
+      for (const post of rows) {
+        post.categories = await this.getCategories(post.id);
+      }
 
       return {
         posts: rows,
         total: countResult[0].total,
-        page,
+        page: parseInt(page),
         totalPages: Math.ceil(countResult[0].total / limit)
       };
     } catch (error) {
+      console.error('Error finding posts:', error);
       throw new Error('Error finding posts: ' + error.message);
     }
   }
@@ -173,68 +179,31 @@ class Post {
   // Update a post
   static async update(id, postData) {
     try {
-      const {
-        title,
-        content,
-        thumbnail,
-        status,
-        meta_title,
-        meta_description,
-        canonical_url
-      } = postData;
-
-      // Generate new slug if title is updated
-      let slug = null;
-      if (title) {
-        slug = slugify(title, {
+      if (postData.title) {
+        // Update slug if title changes
+        postData.slug = slugify(postData.title, {
           lower: true,
           strict: true
         });
       }
 
-      let query = 'UPDATE posts SET ';
-      const updates = [];
-      const params = [];
+      const keys = Object.keys(postData);
+      if (!keys.length) return false;
 
-      if (title) {
-        updates.push('title = ?');
-        params.push(title);
-      }
-      if (content) {
-        updates.push('content = ?');
-        params.push(content);
-      }
-      if (thumbnail) {
-        updates.push('thumbnail = ?');
-        params.push(thumbnail);
-      }
-      if (status) {
-        updates.push('status = ?');
-        params.push(status);
-      }
-      if (meta_title) {
-        updates.push('meta_title = ?');
-        params.push(meta_title);
-      }
-      if (meta_description) {
-        updates.push('meta_description = ?');
-        params.push(meta_description);
-      }
-      if (canonical_url) {
-        updates.push('canonical_url = ?');
-        params.push(canonical_url);
-      }
-      if (slug) {
-        updates.push('slug = ?');
-        params.push(slug);
-      }
+      const placeholders = keys.map(key => `${key} = ?`).join(', ');
+      const values = keys.map(key => postData[key]);
+      values.push(id);
 
-      query += updates.join(', ') + ' WHERE id = ?';
-      params.push(id);
+      const query = `
+        UPDATE posts
+        SET ${placeholders}
+        WHERE id = ?
+      `;
 
-      const [result] = await db.execute(query, params);
+      const [result] = await db.execute(query, values);
       return result.affectedRows > 0;
     } catch (error) {
+      console.error('Error updating post:', error);
       throw new Error('Error updating post: ' + error.message);
     }
   }
@@ -242,16 +211,14 @@ class Post {
   // Delete a post
   static async delete(id) {
     try {
-      // Delete category items first
-      await db.execute(
-        'DELETE FROM category_items WHERE item_id = ? AND item_type = "post"',
-        [id]
-      );
-
-      // Then delete the post
+      // Delete related post categories
+      await db.execute('DELETE FROM post_categories WHERE post_id = ?', [id]);
+      // Delete the post
       const [result] = await db.execute('DELETE FROM posts WHERE id = ?', [id]);
+      
       return result.affectedRows > 0;
     } catch (error) {
+      console.error('Error deleting post:', error);
       throw new Error('Error deleting post: ' + error.message);
     }
   }
@@ -260,36 +227,75 @@ class Post {
   static async incrementViews(id) {
     try {
       await db.execute(
-        'UPDATE posts SET views_count = views_count + 1 WHERE id = ?',
+        'UPDATE posts SET views = views + 1 WHERE id = ?',
         [id]
       );
+      return true;
     } catch (error) {
-      throw new Error('Error incrementing view count: ' + error.message);
+      console.error('Error incrementing views:', error);
+      return false;
     }
   }
 
   // Add categories to a post
   static async addCategories(postId, categoryIds) {
     try {
-      const values = categoryIds.map(categoryId => [postId, categoryId, 'post']);
-      await db.execute(
-        'INSERT INTO category_items (item_id, category_id, item_type) VALUES ?',
-        [values]
-      );
+      // Delete any existing categories
+      await db.execute('DELETE FROM post_categories WHERE post_id = ?', [postId]);
+      
+      // Add new categories
+      for (const categoryId of categoryIds) {
+        await db.execute(
+          'INSERT INTO post_categories (post_id, category_id) VALUES (?, ?)',
+          [postId, categoryId]
+        );
+      }
+      return true;
     } catch (error) {
-      throw new Error('Error adding categories to post: ' + error.message);
+      console.error('Error adding categories to post:', error);
+      throw new Error('Error adding categories: ' + error.message);
     }
   }
 
-  // Remove categories from a post
-  static async removeCategories(postId, categoryIds) {
+  // Remove all categories from a post
+  static async removeCategories(postId) {
     try {
-      await db.execute(
-        'DELETE FROM category_items WHERE item_id = ? AND category_id IN (?) AND item_type = "post"',
-        [postId, categoryIds]
-      );
+      await db.execute('DELETE FROM post_categories WHERE post_id = ?', [postId]);
+      return true;
     } catch (error) {
-      throw new Error('Error removing categories from post: ' + error.message);
+      console.error('Error removing categories from post:', error);
+      throw new Error('Error removing categories: ' + error.message);
+    }
+  }
+
+  // Get categories for a post
+  static async getCategories(postId) {
+    try {
+      const [rows] = await db.execute(
+        `SELECT c.* 
+         FROM categories c
+         JOIN post_categories pc ON c.id = pc.category_id
+         WHERE pc.post_id = ?`,
+        [postId]
+      );
+      return rows;
+    } catch (error) {
+      console.error('Error getting categories for post:', error);
+      return [];
+    }
+  }
+
+  // Check if post exists
+  static async exists(id) {
+    try {
+      const [rows] = await db.execute(
+        'SELECT EXISTS(SELECT 1 FROM posts WHERE id = ?) as exist',
+        [id]
+      );
+      return rows[0].exist === 1;
+    } catch (error) {
+      console.error('Error checking post existence:', error);
+      return false;
     }
   }
 }

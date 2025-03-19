@@ -1,8 +1,9 @@
 const db = require('../config/database');
 
-class Category {
-  // Create a new category
-  static async create(categoryData) {
+// Model danh mục
+const Category = {
+  // Tạo danh mục mới
+  create: async (categoryData) => {
     try {
       const { name, description = null, parent_id = null } = categoryData;
 
@@ -13,12 +14,13 @@ class Category {
 
       return result.insertId;
     } catch (error) {
-      throw new Error('Error creating category: ' + error.message);
+      console.error('Lỗi khi tạo danh mục:', error);
+      throw new Error('Lỗi khi tạo danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Find category by ID
-  static async findById(id) {
+  // Tìm danh mục theo ID
+  findById: async (id) => {
     try {
       const [rows] = await db.execute(
         `SELECT c.*, 
@@ -31,12 +33,13 @@ class Category {
       );
       return rows[0];
     } catch (error) {
-      throw new Error('Error finding category: ' + error.message);
+      console.error('Lỗi khi tìm danh mục:', error);
+      throw new Error('Lỗi khi tìm danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Get all categories with optional filters
-  static async findAll(includeStats = false) {
+  // Lấy tất cả danh mục với tùy chọn thống kê
+  findAll: async (includeStats = false) => {
     try {
       let query = `
         SELECT c.*,
@@ -50,18 +53,19 @@ class Category {
       const [rows] = await db.execute(query);
       return rows;
     } catch (error) {
-      throw new Error('Error finding categories: ' + error.message);
+      console.error('Lỗi khi lấy danh sách danh mục:', error);
+      throw new Error('Lỗi khi lấy danh sách danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Get categories as a tree structure
-  static async getTree() {
+  // Lấy danh mục dưới dạng cấu trúc cây
+  getTree: async () => {
     try {
-      const categories = await this.findAll(true);
+      const categories = await Category.findAll(true);
       const tree = [];
       const map = {};
 
-      // First map the nodes of the tree
+      // Đầu tiên map các node của cây
       categories.forEach(cat => {
         map[cat.id] = {
           ...cat,
@@ -69,36 +73,37 @@ class Category {
         };
       });
 
-      // Then build the tree
+      // Sau đó xây dựng cây
       categories.forEach(cat => {
         if (cat.parent_id) {
-          // If it has a parent, add it to parent's children array
+          // Nếu có parent, thêm vào mảng children của parent
           map[cat.parent_id].children.push(map[cat.id]);
         } else {
-          // If no parent, it's a root node
+          // Nếu không có parent, đây là node gốc
           tree.push(map[cat.id]);
         }
       });
 
       return tree;
     } catch (error) {
-      throw new Error('Error building category tree: ' + error.message);
+      console.error('Lỗi khi xây dựng cây danh mục:', error);
+      throw new Error('Lỗi khi xây dựng cây danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Update a category
-  static async update(id, categoryData) {
+  // Cập nhật danh mục
+  update: async (id, categoryData) => {
     try {
       const { name, description, parent_id } = categoryData;
 
-      // Check for circular reference
+      // Kiểm tra tham chiếu vòng tròn
       if (parent_id) {
         let currentParent = parent_id;
         while (currentParent) {
           if (currentParent === id) {
-            throw new Error('Circular reference detected in category hierarchy');
+            throw new Error('Phát hiện tham chiếu vòng tròn trong cấu trúc phân cấp danh mục');
           }
-          const parent = await this.findById(currentParent);
+          const parent = await Category.findById(currentParent);
           currentParent = parent ? parent.parent_id : null;
         }
       }
@@ -110,42 +115,44 @@ class Category {
 
       return result.affectedRows > 0;
     } catch (error) {
-      throw new Error('Error updating category: ' + error.message);
+      console.error('Lỗi khi cập nhật danh mục:', error);
+      throw new Error('Lỗi khi cập nhật danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Delete a category
-  static async delete(id) {
+  // Xóa danh mục
+  delete: async (id) => {
     try {
-      // Check if category has courses
+      // Kiểm tra xem danh mục có khóa học không
       const [courses] = await db.execute(
         'SELECT COUNT(*) as count FROM courses WHERE category_id = ?',
         [id]
       );
       
       if (courses[0].count > 0) {
-        throw new Error('Cannot delete category with associated courses');
+        throw new Error('Không thể xóa danh mục có chứa khóa học');
       }
 
-      // Check if category has child categories
+      // Kiểm tra xem danh mục có danh mục con không
       const [children] = await db.execute(
         'SELECT COUNT(*) as count FROM categories WHERE parent_id = ?',
         [id]
       );
 
       if (children[0].count > 0) {
-        throw new Error('Cannot delete category with child categories');
+        throw new Error('Không thể xóa danh mục có danh mục con');
       }
 
       const [result] = await db.execute('DELETE FROM categories WHERE id = ?', [id]);
       return result.affectedRows > 0;
     } catch (error) {
-      throw new Error('Error deleting category: ' + error.message);
+      console.error('Lỗi khi xóa danh mục:', error);
+      throw new Error('Lỗi khi xóa danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Get category statistics
-  static async getStats() {
+  // Lấy thống kê danh mục
+  getStats: async () => {
     try {
       const [rows] = await db.execute(`
         SELECT 
@@ -163,12 +170,13 @@ class Category {
       `);
       return rows;
     } catch (error) {
-      throw new Error('Error getting category statistics: ' + error.message);
+      console.error('Lỗi khi lấy thống kê danh mục:', error);
+      throw new Error('Lỗi khi lấy thống kê danh mục: ' + error.message);
     }
-  }
+  },
 
-  // Check if a category exists
-  static async exists(id) {
+  // Kiểm tra danh mục tồn tại
+  exists: async (id) => {
     try {
       const [rows] = await db.execute(
         'SELECT id FROM categories WHERE id = ?',
@@ -176,9 +184,10 @@ class Category {
       );
       return rows.length > 0;
     } catch (error) {
-      throw new Error('Error checking category existence: ' + error.message);
+      console.error('Lỗi khi kiểm tra sự tồn tại của danh mục:', error);
+      throw new Error('Lỗi khi kiểm tra sự tồn tại của danh mục: ' + error.message);
     }
   }
-}
+};
 
 module.exports = Category;

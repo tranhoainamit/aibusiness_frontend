@@ -1,19 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { PartnerController, partnerValidation } = require('../controllers/partnerController');
+const partnerController = require('../controllers/partnerController');
 const { auth, checkRole } = require('../middleware/auth');
 
 // Public routes
-router.get('/', PartnerController.getAll);
-router.get('/active', PartnerController.getActive);
-router.get('/:id', PartnerController.getById);
+router.get('/', partnerController.getAll);
+router.get('/active', partnerController.getActive);
+router.get('/name/:name', partnerController.getByName);
+router.get('/:id', partnerController.getById);
 
 // Protected routes - Admin only
 router.use(auth, checkRole([3]));
 
-router.post('/', partnerValidation, PartnerController.create);
-router.put('/:id', partnerValidation, PartnerController.update);
-router.delete('/:id', PartnerController.delete);
-router.patch('/:id/toggle-active', PartnerController.toggleActive);
+router.post('/', partnerController.partnerValidation, partnerController.create);
+router.put('/:id', partnerController.partnerValidation, partnerController.update);
+router.delete('/:id', partnerController.delete);
+router.patch('/:id/toggle-active', partnerController.toggleActive);
 
 module.exports = router; 

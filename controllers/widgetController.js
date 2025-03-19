@@ -6,9 +6,9 @@ const widgetValidation = [
   body('name')
     .trim()
     .notEmpty()
-    .withMessage('Widget name is required')
+    .withMessage('Tên widget là bắt buộc')
     .isLength({ max: 100 })
-    .withMessage('Widget name must not exceed 100 characters'),
+    .withMessage('Tên widget không được vượt quá 100 ký tự'),
   
   body('content')
     .optional()
@@ -18,191 +18,211 @@ const widgetValidation = [
     .optional()
     .trim()
     .isLength({ max: 50 })
-    .withMessage('Position must not exceed 50 characters'),
+    .withMessage('Vị trí không được vượt quá 50 ký tự'),
   
   body('is_active')
     .optional()
     .isBoolean()
-    .withMessage('Active status must be a boolean value'),
+    .withMessage('Trạng thái kích hoạt phải là giá trị boolean'),
   
   body('order_number')
     .optional()
     .isInt({ min: 0 })
-    .withMessage('Order number must be a non-negative integer')
+    .withMessage('Số thứ tự phải là số nguyên không âm')
 ];
 
-class WidgetController {
-  // Create new widget
-  static async create(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const widgetId = await Widget.create(req.body);
-      const widget = await Widget.findById(widgetId);
-
-      res.status(201).json({
-        message: 'Widget created successfully',
-        widget
+// Create new widget
+const create = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
       });
-    } catch (error) {
-      console.error('Create widget error:', error);
-      res.status(500).json({ message: 'Error creating widget' });
     }
+
+    const widgetId = await Widget.create(req.body);
+    const widget = await Widget.findById(widgetId);
+
+    res.status(201).json({
+      message: 'Tạo widget thành công',
+      data: widget
+    });
+  } catch (error) {
+    console.error('Lỗi tạo widget:', error);
+    res.status(500).json({ message: 'Lỗi khi tạo widget' });
   }
+};
 
-  // Get all widgets with filters
-  static async getAll(req, res) {
-    try {
-      const filters = {
-        is_active: req.query.is_active === 'true' ? true : 
-                   req.query.is_active === 'false' ? false : undefined,
-        position: req.query.position,
-        search: req.query.search,
-        page: req.query.page,
-        limit: req.query.limit
-      };
+// Get all widgets with filters
+const getAll = async (req, res) => {
+  try {
+    const filters = {
+      is_active: req.query.is_active === 'true' ? true : 
+                 req.query.is_active === 'false' ? false : undefined,
+      position: req.query.position,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit
+    };
 
-      const result = await Widget.findAll(filters);
-      res.json(result);
-    } catch (error) {
-      console.error('Get widgets error:', error);
-      res.status(500).json({ message: 'Error retrieving widgets' });
+    const result = await Widget.findAll(filters);
+    res.json({
+      message: 'Lấy danh sách widget thành công',
+      data: result
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách widget:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách widget' });
+  }
+};
+
+// Get widget by ID
+const getById = async (req, res) => {
+  try {
+    const widget = await Widget.findById(req.params.id);
+    if (!widget) {
+      return res.status(404).json({ message: 'Không tìm thấy widget' });
     }
+    res.json({
+      message: 'Lấy thông tin widget thành công',
+      data: widget
+    });
+  } catch (error) {
+    console.error('Lỗi lấy thông tin widget:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy thông tin widget' });
   }
+};
 
-  // Get widget by ID
-  static async getById(req, res) {
-    try {
-      const widget = await Widget.findById(req.params.id);
-      if (!widget) {
-        return res.status(404).json({ message: 'Widget not found' });
-      }
-      res.json(widget);
-    } catch (error) {
-      console.error('Get widget error:', error);
-      res.status(500).json({ message: 'Error retrieving widget' });
+// Update widget
+const update = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
+      });
     }
-  }
 
-  // Update widget
-  static async update(req, res) {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const widget = await Widget.findById(req.params.id);
-      if (!widget) {
-        return res.status(404).json({ message: 'Widget not found' });
-      }
-
-      const updated = await Widget.update(req.params.id, req.body);
-      if (updated) {
-        const updatedWidget = await Widget.findById(req.params.id);
-        res.json({
-          message: 'Widget updated successfully',
-          widget: updatedWidget
-        });
-      } else {
-        res.status(400).json({ message: 'Failed to update widget' });
-      }
-    } catch (error) {
-      console.error('Update widget error:', error);
-      res.status(500).json({ message: 'Error updating widget' });
+    const widget = await Widget.findById(req.params.id);
+    if (!widget) {
+      return res.status(404).json({ message: 'Không tìm thấy widget' });
     }
-  }
 
-  // Delete widget
-  static async delete(req, res) {
-    try {
-      const widget = await Widget.findById(req.params.id);
-      if (!widget) {
-        return res.status(404).json({ message: 'Widget not found' });
-      }
-
-      const deleted = await Widget.delete(req.params.id);
-      if (deleted) {
-        res.json({ message: 'Widget deleted successfully' });
-      } else {
-        res.status(400).json({ message: 'Failed to delete widget' });
-      }
-    } catch (error) {
-      console.error('Delete widget error:', error);
-      res.status(500).json({ message: 'Error deleting widget' });
+    const updated = await Widget.update(req.params.id, req.body);
+    if (updated) {
+      const updatedWidget = await Widget.findById(req.params.id);
+      res.json({
+        message: 'Cập nhật widget thành công',
+        data: updatedWidget
+      });
+    } else {
+      res.status(400).json({ message: 'Cập nhật widget thất bại' });
     }
+  } catch (error) {
+    console.error('Lỗi cập nhật widget:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật widget' });
   }
+};
 
-  // Toggle widget active status
-  static async toggleActive(req, res) {
-    try {
-      const widget = await Widget.findById(req.params.id);
-      if (!widget) {
-        return res.status(404).json({ message: 'Widget not found' });
-      }
-
-      const toggled = await Widget.toggleActive(req.params.id);
-      if (toggled) {
-        const updatedWidget = await Widget.findById(req.params.id);
-        res.json({
-          message: 'Widget status toggled successfully',
-          widget: updatedWidget
-        });
-      } else {
-        res.status(400).json({ message: 'Failed to toggle widget status' });
-      }
-    } catch (error) {
-      console.error('Toggle widget status error:', error);
-      res.status(500).json({ message: 'Error toggling widget status' });
+// Delete widget
+const deleteWidget = async (req, res) => {
+  try {
+    const widget = await Widget.findById(req.params.id);
+    if (!widget) {
+      return res.status(404).json({ message: 'Không tìm thấy widget' });
     }
-  }
 
-  // Get widgets by position
-  static async getByPosition(req, res) {
-    try {
-      const widgets = await Widget.getByPosition(req.params.position);
-      res.json(widgets);
-    } catch (error) {
-      console.error('Get widgets by position error:', error);
-      res.status(500).json({ message: 'Error retrieving widgets by position' });
+    const deleted = await Widget.delete(req.params.id);
+    if (deleted) {
+      res.json({ message: 'Xóa widget thành công' });
+    } else {
+      res.status(400).json({ message: 'Xóa widget thất bại' });
     }
+  } catch (error) {
+    console.error('Lỗi xóa widget:', error);
+    res.status(500).json({ message: 'Lỗi khi xóa widget' });
   }
+};
 
-  // Update widget order
-  static async updateOrder(req, res) {
-    try {
-      const { order_number } = req.body;
-      
-      if (typeof order_number !== 'number' || order_number < 0) {
-        return res.status(400).json({ message: 'Invalid order number' });
-      }
-
-      const widget = await Widget.findById(req.params.id);
-      if (!widget) {
-        return res.status(404).json({ message: 'Widget not found' });
-      }
-
-      const updated = await Widget.updateOrder(req.params.id, order_number);
-      if (updated) {
-        const updatedWidget = await Widget.findById(req.params.id);
-        res.json({
-          message: 'Widget order updated successfully',
-          widget: updatedWidget
-        });
-      } else {
-        res.status(400).json({ message: 'Failed to update widget order' });
-      }
-    } catch (error) {
-      console.error('Update widget order error:', error);
-      res.status(500).json({ message: 'Error updating widget order' });
+// Toggle widget active status
+const toggleActive = async (req, res) => {
+  try {
+    const widget = await Widget.findById(req.params.id);
+    if (!widget) {
+      return res.status(404).json({ message: 'Không tìm thấy widget' });
     }
+
+    const toggled = await Widget.toggleActive(req.params.id);
+    if (toggled) {
+      const updatedWidget = await Widget.findById(req.params.id);
+      res.json({
+        message: 'Thay đổi trạng thái widget thành công',
+        data: updatedWidget
+      });
+    } else {
+      res.status(400).json({ message: 'Thay đổi trạng thái widget thất bại' });
+    }
+  } catch (error) {
+    console.error('Lỗi thay đổi trạng thái widget:', error);
+    res.status(500).json({ message: 'Lỗi khi thay đổi trạng thái widget' });
   }
-}
+};
+
+// Get widgets by position
+const getByPosition = async (req, res) => {
+  try {
+    const widgets = await Widget.getByPosition(req.params.position);
+    res.json({
+      message: 'Lấy danh sách widget theo vị trí thành công',
+      data: widgets
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách widget theo vị trí:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách widget theo vị trí' });
+  }
+};
+
+// Update widget order
+const updateOrder = async (req, res) => {
+  try {
+    const { order_number } = req.body;
+    
+    if (typeof order_number !== 'number' || order_number < 0) {
+      return res.status(400).json({ message: 'Số thứ tự không hợp lệ' });
+    }
+
+    const widget = await Widget.findById(req.params.id);
+    if (!widget) {
+      return res.status(404).json({ message: 'Không tìm thấy widget' });
+    }
+
+    const updated = await Widget.updateOrder(req.params.id, order_number);
+    if (updated) {
+      const updatedWidget = await Widget.findById(req.params.id);
+      res.json({
+        message: 'Cập nhật thứ tự widget thành công',
+        data: updatedWidget
+      });
+    } else {
+      res.status(400).json({ message: 'Cập nhật thứ tự widget thất bại' });
+    }
+  } catch (error) {
+    console.error('Lỗi cập nhật thứ tự widget:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật thứ tự widget' });
+  }
+};
 
 module.exports = {
-  WidgetController,
+  create,
+  getAll,
+  getById,
+  update,
+  delete: deleteWidget,
+  toggleActive,
+  getByPosition,
+  updateOrder,
   widgetValidation
 }; 

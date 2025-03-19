@@ -1,8 +1,9 @@
 const db = require('../config/database');
 
-class Setting {
+// Model cài đặt hệ thống
+const Setting = {
   // Tạo cài đặt mới
-  static async create(settingData) {
+  create: async (settingData) => {
     try {
       const {
         key,
@@ -23,12 +24,13 @@ class Setting {
 
       return result.insertId;
     } catch (error) {
+      console.error('Lỗi khi tạo cài đặt:', error);
       throw new Error('Lỗi khi tạo cài đặt: ' + error.message);
     }
-  }
+  },
 
   // Tìm cài đặt theo key
-  static async findByKey(key) {
+  findByKey: async (key) => {
     try {
       const [rows] = await db.execute(
         'SELECT * FROM settings WHERE `key` = ?',
@@ -36,12 +38,13 @@ class Setting {
       );
       return rows[0];
     } catch (error) {
+      console.error('Lỗi khi tìm cài đặt:', error);
       throw new Error('Lỗi khi tìm cài đặt: ' + error.message);
     }
-  }
+  },
 
   // Lấy tất cả cài đặt với bộ lọc
-  static async findAll(filters = {}) {
+  findAll: async (filters = {}) => {
     try {
       let query = 'SELECT * FROM settings WHERE 1=1';
       const params = [];
@@ -104,24 +107,26 @@ class Setting {
         totalPages: Math.ceil(countResult[0].total / limit)
       };
     } catch (error) {
+      console.error('Lỗi khi lấy danh sách cài đặt:', error);
       throw new Error('Lỗi khi lấy danh sách cài đặt: ' + error.message);
     }
-  }
+  },
 
   // Lấy tất cả cài đặt công khai
-  static async getPublicSettings() {
+  getPublicSettings: async () => {
     try {
       const [rows] = await db.execute(
         'SELECT `key`, value, type, `group` FROM settings WHERE is_public = true'
       );
       return rows;
     } catch (error) {
+      console.error('Lỗi khi lấy cài đặt công khai:', error);
       throw new Error('Lỗi khi lấy cài đặt công khai: ' + error.message);
     }
-  }
+  },
 
   // Lấy cài đặt theo nhóm
-  static async getByGroup(group) {
+  getByGroup: async (group) => {
     try {
       const [rows] = await db.execute(
         'SELECT * FROM settings WHERE `group` = ?',
@@ -129,12 +134,13 @@ class Setting {
       );
       return rows;
     } catch (error) {
+      console.error('Lỗi khi lấy cài đặt theo nhóm:', error);
       throw new Error('Lỗi khi lấy cài đặt theo nhóm: ' + error.message);
     }
-  }
+  },
 
   // Cập nhật cài đặt
-  static async update(key, updateData) {
+  update: async (key, updateData) => {
     try {
       const allowedFields = ['value', 'type', 'group', 'is_public', 'description'];
       const updates = [];
@@ -157,12 +163,13 @@ class Setting {
       const [result] = await db.execute(query, values);
       return result.affectedRows > 0;
     } catch (error) {
+      console.error('Lỗi khi cập nhật cài đặt:', error);
       throw new Error('Lỗi khi cập nhật cài đặt: ' + error.message);
     }
-  }
+  },
 
   // Xóa cài đặt
-  static async delete(key) {
+  delete: async (key) => {
     try {
       const [result] = await db.execute(
         'DELETE FROM settings WHERE `key` = ?',
@@ -170,12 +177,13 @@ class Setting {
       );
       return result.affectedRows > 0;
     } catch (error) {
+      console.error('Lỗi khi xóa cài đặt:', error);
       throw new Error('Lỗi khi xóa cài đặt: ' + error.message);
     }
-  }
+  },
 
   // Kiểm tra cài đặt tồn tại
-  static async exists(key) {
+  exists: async (key) => {
     try {
       const [rows] = await db.execute(
         'SELECT `key` FROM settings WHERE `key` = ?',
@@ -183,12 +191,13 @@ class Setting {
       );
       return rows.length > 0;
     } catch (error) {
+      console.error('Lỗi khi kiểm tra cài đặt tồn tại:', error);
       throw new Error('Lỗi khi kiểm tra cài đặt tồn tại: ' + error.message);
     }
-  }
+  },
 
   // Cập nhật nhiều cài đặt cùng lúc
-  static async bulkUpdate(settings) {
+  bulkUpdate: async (settings) => {
     try {
       const updates = settings.map(async ({ key, value }) => {
         const [result] = await db.execute(
@@ -201,9 +210,10 @@ class Setting {
       const results = await Promise.all(updates);
       return results.every(result => result === true);
     } catch (error) {
+      console.error('Lỗi khi cập nhật hàng loạt cài đặt:', error);
       throw new Error('Lỗi khi cập nhật hàng loạt cài đặt: ' + error.message);
     }
   }
-}
+};
 
 module.exports = Setting; 

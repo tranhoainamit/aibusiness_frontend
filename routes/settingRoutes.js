@@ -1,24 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const {
-  SettingController,
-  settingValidation,
-  bulkUpdateValidation
-} = require('../controllers/settingController');
+const settingController = require('../controllers/settingController');
 const { auth, checkRole } = require('../middleware/auth');
 
 // Public routes
-router.get('/public', SettingController.getPublic);
+router.get('/public', settingController.getPublic);
 
 // Protected routes - Admin only
 router.use(auth, checkRole([3]));
 
-router.get('/', SettingController.getAll);
-router.get('/group/:group', SettingController.getByGroup);
-router.get('/:key', SettingController.getByKey);
-router.post('/', settingValidation, SettingController.create);
-router.put('/:key', settingValidation, SettingController.update);
-router.post('/bulk-update', bulkUpdateValidation, SettingController.bulkUpdate);
-router.delete('/:key', SettingController.delete);
+router.get('/', settingController.getAll);
+router.get('/group/:group', settingController.getByGroup);
+router.get('/:key', settingController.getByKey);
+router.post('/', settingController.settingValidation, settingController.create);
+router.put('/:key', settingController.settingValidation, settingController.update);
+router.post('/bulk-update', settingController.bulkUpdateValidation, settingController.bulkUpdate);
+router.delete('/:key', settingController.delete);
 
 module.exports = router; 

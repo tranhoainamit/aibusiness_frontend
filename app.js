@@ -1,8 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const path = require('path');
 require('dotenv').config();
 
+// Import routes
 const userRoutes = require('./routes/userRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const lessonRoutes = require('./routes/lessonRoutes');
@@ -21,20 +23,36 @@ const menuRoutes = require('./routes/menuRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const sessionRoutes = require('./routes/sessionRoutes');
+const statsRoutes = require('./routes/statsRoutes');
+const authRoutes = require('./routes/authRoutes');
+const partnerRoutes = require('./routes/partnerRoutes');
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// Basic middleware
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:5174'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev')); // Logging middleware
 
-// Serve static files from public directory
-app.use('/public', express.static('public'));
-app.use('/uploads', express.static('uploads'));
+// Serve static files
+app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
+// Health check route
+app.get('/api', (req, res) => {
+  res.json({ 
+    message: 'API đang hoạt động', 
+    status: 'ok',
+    time: new Date().toISOString() 
+  });
+});
+
+// API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/lessons', lessonRoutes);
@@ -53,21 +71,41 @@ app.use('/api/menus', menuRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/sessions', sessionRoutes);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
-});
+app.use('/api/stats', statsRoutes);
+app.use('/api/partners', partnerRoutes);
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ message: 'Không tìm thấy đường dẫn' });
 });
 
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Lỗi server:', err.stack);
+  
+  // Return different response based on error type
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({ 
+      message: 'Dữ liệu không hợp lệ', 
+      errors: err.errors 
+    });
+  }
+  
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({ message: 'Không có quyền truy cập' });
+  }
+  
+  // Default server error
+  res.status(500).json({ 
+    message: 'Đã xảy ra lỗi hệ thống',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server đang chạy trên cổng ${PORT}`);
 });
 
 module.exports = app;

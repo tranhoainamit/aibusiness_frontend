@@ -2,40 +2,69 @@ const Lesson = require('../models/Lesson');
 const Course = require('../models/Course');
 const { body, validationResult } = require('express-validator');
 
+// Validation rules
+const lessonValidation = [
+  body('course_id')
+    .isInt()
+    .withMessage('ID khóa học không hợp lệ'),
+  
+  body('title')
+    .notEmpty()
+    .withMessage('Tiêu đề bài học là bắt buộc')
+    .isLength({ max: 255 })
+    .withMessage('Tiêu đề không được vượt quá 255 ký tự'),
+  
+  body('video_url')
+    .notEmpty()
+    .withMessage('URL video là bắt buộc')
+    .isURL()
+    .withMessage('URL video không hợp lệ'),
+  
+  body('duration')
+    .isInt({ min: 0 })
+    .withMessage('Thời lượng phải là số dương'),
+  
+  body('order_number')
+    .isInt({ min: 0 })
+    .withMessage('Số thứ tự phải là số dương'),
+  
+  body('description')
+    .optional()
+    .trim()
+];
+
 const lessonController = {
   // Create new lesson
   create: async (req, res) => {
     try {
-      // Validate input
-      await body('course_id').isInt().withMessage('Invalid course ID').run(req);
-      await body('title').notEmpty().withMessage('Title is required').run(req);
-      await body('video_url').notEmpty().withMessage('Video URL is required').run(req);
-      await body('duration').isInt({ min: 0 }).withMessage('Duration must be a positive number').run(req);
-      await body('order_number').isInt({ min: 0 }).withMessage('Order number must be a positive number').run(req);
-      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
       }
 
       // Check if course exists and user is authorized
       const course = await Course.findById(req.body.course_id);
       if (!course) {
-        return res.status(404).json({ message: 'Course not found' });
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
 
-      if (course.instructor_id !== req.user.id && req.user.role_id !== 2) {
-        return res.status(403).json({ message: 'Not authorized to add lessons to this course' });
+      if (course.instructor_id !== req.user.id && req.user.role_id !== 3) {
+        return res.status(403).json({ message: 'Bạn không có quyền thêm bài học vào khóa học này' });
       }
 
       const lessonId = await Lesson.create(req.body);
+      const newLesson = await Lesson.findById(lessonId);
+      
       res.status(201).json({
-        message: 'Lesson created successfully',
-        lessonId
+        message: 'Tạo bài học thành công',
+        data: newLesson
       });
     } catch (error) {
-      console.error('Create lesson error:', error);
-      res.status(500).json({ message: 'Error creating lesson' });
+      console.error('Lỗi tạo bài học:', error);
+      res.status(500).json({ message: 'Lỗi khi tạo bài học' });
     }
   },
 
@@ -46,14 +75,17 @@ const lessonController = {
       const course = await Course.findById(courseId);
 
       if (!course) {
-        return res.status(404).json({ message: 'Course not found' });
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
 
       const lessons = await Lesson.findByCourseId(courseId);
-      res.json({ lessons });
+      res.json({
+        message: 'Lấy danh sách bài học thành công',
+        data: lessons
+      });
     } catch (error) {
-      console.error('Get lessons by course error:', error);
-      res.status(500).json({ message: 'Error fetching lessons' });
+      console.error('Lỗi lấy danh sách bài học theo khóa học:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy danh sách bài học' });
     }
   },
 
@@ -62,40 +94,61 @@ const lessonController = {
     try {
       const lesson = await Lesson.findById(req.params.id);
       if (!lesson) {
-        return res.status(404).json({ message: 'Lesson not found' });
+        return res.status(404).json({ message: 'Không tìm thấy bài học' });
       }
 
-      res.json({ lesson });
+      res.json({
+        message: 'Lấy thông tin bài học thành công',
+        data: lesson
+      });
     } catch (error) {
-      console.error('Get lesson by id error:', error);
-      res.status(500).json({ message: 'Error fetching lesson' });
+      console.error('Lỗi lấy thông tin bài học:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy thông tin bài học' });
     }
   },
 
   // Update lesson
   update: async (req, res) => {
     try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
       const lessonId = req.params.id;
+      
+      // Check if lesson exists
       const lesson = await Lesson.findById(lessonId);
-
       if (!lesson) {
-        return res.status(404).json({ message: 'Lesson not found' });
+        return res.status(404).json({ message: 'Không tìm thấy bài học' });
       }
-
-      // Check if user is instructor or admin
-      if (lesson.instructor_id !== req.user.id && req.user.role_id !== 2) {
-        return res.status(403).json({ message: 'Not authorized to update this lesson' });
+      
+      // Check if user is authorized (instructor of the course or admin)
+      const course = await Course.findById(lesson.course_id);
+      if (!course) {
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
-
-      const updated = await Lesson.update(lessonId, req.body);
-      if (!updated) {
-        return res.status(404).json({ message: 'Lesson not found' });
+      
+      if (course.instructor_id !== req.user.id && req.user.role_id !== 3) {
+        return res.status(403).json({ message: 'Bạn không có quyền cập nhật bài học này' });
       }
-
-      res.json({ message: 'Lesson updated successfully' });
+      
+      // Update lesson
+      await Lesson.update(lessonId, req.body);
+      
+      // Get updated lesson
+      const updatedLesson = await Lesson.findById(lessonId);
+      
+      res.json({
+        message: 'Cập nhật bài học thành công',
+        data: updatedLesson
+      });
     } catch (error) {
-      console.error('Update lesson error:', error);
-      res.status(500).json({ message: 'Error updating lesson' });
+      console.error('Lỗi cập nhật bài học:', error);
+      res.status(500).json({ message: 'Lỗi khi cập nhật bài học' });
     }
   },
 
@@ -103,54 +156,69 @@ const lessonController = {
   delete: async (req, res) => {
     try {
       const lessonId = req.params.id;
+      
+      // Check if lesson exists
       const lesson = await Lesson.findById(lessonId);
-
       if (!lesson) {
-        return res.status(404).json({ message: 'Lesson not found' });
+        return res.status(404).json({ message: 'Không tìm thấy bài học' });
       }
-
-      // Check if user is instructor or admin
-      if (lesson.instructor_id !== req.user.id && req.user.role_id !== 2) {
-        return res.status(403).json({ message: 'Not authorized to delete this lesson' });
+      
+      // Check if user is authorized (instructor of the course or admin)
+      const course = await Course.findById(lesson.course_id);
+      if (!course) {
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
-
-      const deleted = await Lesson.delete(lessonId);
-      if (!deleted) {
-        return res.status(404).json({ message: 'Lesson not found' });
+      
+      if (course.instructor_id !== req.user.id && req.user.role_id !== 3) {
+        return res.status(403).json({ message: 'Bạn không có quyền xóa bài học này' });
       }
-
-      res.json({ message: 'Lesson deleted successfully' });
+      
+      // Delete lesson
+      await Lesson.delete(lessonId);
+      
+      res.json({
+        message: 'Xóa bài học thành công'
+      });
     } catch (error) {
-      console.error('Delete lesson error:', error);
-      res.status(500).json({ message: 'Error deleting lesson' });
+      console.error('Lỗi xóa bài học:', error);
+      res.status(500).json({ message: 'Lỗi khi xóa bài học' });
     }
   },
 
-  // Reorder lessons
+  // Reorder lessons in a course
   reorder: async (req, res) => {
     try {
-      const courseId = req.params.courseId;
-      const { lessonIds } = req.body;
-
-      if (!Array.isArray(lessonIds) || lessonIds.length === 0) {
-        return res.status(400).json({ message: 'Invalid lesson IDs array' });
+      const { courseId } = req.params;
+      const { lessonOrders } = req.body;
+      
+      if (!Array.isArray(lessonOrders)) {
+        return res.status(400).json({ message: 'Dữ liệu không hợp lệ, cần mảng lessonOrders' });
       }
-
+      
+      // Check if course exists
       const course = await Course.findById(courseId);
       if (!course) {
-        return res.status(404).json({ message: 'Course not found' });
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
-
-      // Check if user is instructor or admin
-      if (course.instructor_id !== req.user.id && req.user.role_id !== 2) {
-        return res.status(403).json({ message: 'Not authorized to reorder lessons' });
+      
+      // Check if user is authorized
+      if (course.instructor_id !== req.user.id && req.user.role_id !== 3) {
+        return res.status(403).json({ message: 'Bạn không có quyền sắp xếp lại bài học cho khóa học này' });
       }
-
-      await Lesson.reorderLessons(courseId, lessonIds);
-      res.json({ message: 'Lessons reordered successfully' });
+      
+      // Reorder lessons
+      await Lesson.reorder(courseId, lessonOrders);
+      
+      // Get updated lessons
+      const updatedLessons = await Lesson.findByCourseId(courseId);
+      
+      res.json({
+        message: 'Sắp xếp lại bài học thành công',
+        data: updatedLessons
+      });
     } catch (error) {
-      console.error('Reorder lessons error:', error);
-      res.status(500).json({ message: 'Error reordering lessons' });
+      console.error('Lỗi sắp xếp lại bài học:', error);
+      res.status(500).json({ message: 'Lỗi khi sắp xếp lại bài học' });
     }
   },
 
@@ -158,16 +226,20 @@ const lessonController = {
   getNext: async (req, res) => {
     try {
       const { courseId, currentLessonId } = req.params;
+      
       const nextLesson = await Lesson.getNextLesson(courseId, currentLessonId);
-
+      
       if (!nextLesson) {
-        return res.status(404).json({ message: 'No next lesson found' });
+        return res.status(404).json({ message: 'Không có bài học tiếp theo' });
       }
-
-      res.json({ lesson: nextLesson });
+      
+      res.json({
+        message: 'Lấy bài học tiếp theo thành công',
+        data: nextLesson
+      });
     } catch (error) {
-      console.error('Get next lesson error:', error);
-      res.status(500).json({ message: 'Error fetching next lesson' });
+      console.error('Lỗi lấy bài học tiếp theo:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy bài học tiếp theo' });
     }
   },
 
@@ -175,18 +247,25 @@ const lessonController = {
   getPrevious: async (req, res) => {
     try {
       const { courseId, currentLessonId } = req.params;
+      
       const previousLesson = await Lesson.getPreviousLesson(courseId, currentLessonId);
-
+      
       if (!previousLesson) {
-        return res.status(404).json({ message: 'No previous lesson found' });
+        return res.status(404).json({ message: 'Không có bài học trước đó' });
       }
-
-      res.json({ lesson: previousLesson });
+      
+      res.json({
+        message: 'Lấy bài học trước đó thành công',
+        data: previousLesson
+      });
     } catch (error) {
-      console.error('Get previous lesson error:', error);
-      res.status(500).json({ message: 'Error fetching previous lesson' });
+      console.error('Lỗi lấy bài học trước đó:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy bài học trước đó' });
     }
   }
 };
 
-module.exports = lessonController; 
+module.exports = {
+  ...lessonController,
+  lessonValidation
+}; 

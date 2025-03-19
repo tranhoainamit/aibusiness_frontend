@@ -2,18 +2,32 @@ const Review = require('../models/Review');
 const Course = require('../models/Course');
 const { body, validationResult } = require('express-validator');
 
+// Validation rules
+const reviewValidation = [
+  body('course_id')
+    .isInt()
+    .withMessage('ID khóa học phải là số nguyên'),
+  
+  body('rating')
+    .isInt({ min: 1, max: 5 })
+    .withMessage('Đánh giá phải từ 1 đến 5 sao'),
+  
+  body('comment')
+    .optional()
+    .isString()
+    .withMessage('Nội dung đánh giá phải là chuỗi ký tự')
+];
+
 const reviewController = {
   // Create a new review
   create: async (req, res) => {
     try {
-      // Validate input
-      await body('course_id').isInt().withMessage('Course ID must be an integer').run(req);
-      await body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5').run(req);
-      await body('comment').optional().isString().withMessage('Comment must be a string').run(req);
-      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array() 
+        });
       }
 
       const { course_id, rating, comment } = req.body;
@@ -22,13 +36,13 @@ const reviewController = {
       // Check if course exists
       const course = await Course.findById(course_id);
       if (!course) {
-        return res.status(404).json({ message: 'Course not found' });
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
 
       // Check if user has already reviewed this course
       const existingReview = await Review.checkUserReview(user_id, course_id);
       if (existingReview) {
-        return res.status(400).json({ message: 'You have already reviewed this course' });
+        return res.status(400).json({ message: 'Bạn đã đánh giá khóa học này rồi' });
       }
 
       const reviewId = await Review.create({
@@ -38,31 +52,38 @@ const reviewController = {
         comment
       });
 
+      // Get the newly created review
+      const newReview = await Review.findById(reviewId);
+
       res.status(201).json({
-        message: 'Review created successfully',
-        review_id: reviewId
+        message: 'Tạo đánh giá thành công',
+        data: newReview
       });
     } catch (error) {
-      console.error('Create review error:', error);
-      res.status(500).json({ message: 'Error creating review' });
+      console.error('Lỗi tạo đánh giá:', error);
+      res.status(500).json({ message: 'Lỗi khi tạo đánh giá' });
     }
   },
 
-  // Get all reviews with filters
+  // Get all reviews with filtering
   getAll: async (req, res) => {
     try {
-      const filters = {
-        course_id: req.query.course_id,
-        user_id: req.query.user_id,
-        rating: req.query.rating,
-        min_rating: req.query.min_rating
-      };
-
-      const reviews = await Review.findAll(filters);
-      res.json({ reviews });
+      const { course_id, user_id, limit = 10, page = 1 } = req.query;
+      
+      const result = await Review.findAll({
+        course_id,
+        user_id,
+        limit: parseInt(limit),
+        page: parseInt(page)
+      });
+      
+      res.json({
+        message: 'Lấy danh sách đánh giá thành công',
+        data: result
+      });
     } catch (error) {
-      console.error('Get reviews error:', error);
-      res.status(500).json({ message: 'Error fetching reviews' });
+      console.error('Lỗi lấy danh sách đánh giá:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy danh sách đánh giá' });
     }
   },
 
@@ -72,93 +93,119 @@ const reviewController = {
       const review = await Review.findById(req.params.id);
       
       if (!review) {
-        return res.status(404).json({ message: 'Review not found' });
+        return res.status(404).json({ message: 'Không tìm thấy đánh giá' });
       }
-
-      res.json({ review });
+      
+      res.json({
+        message: 'Lấy thông tin đánh giá thành công',
+        data: review
+      });
     } catch (error) {
-      console.error('Get review error:', error);
-      res.status(500).json({ message: 'Error fetching review' });
+      console.error('Lỗi lấy thông tin đánh giá:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy thông tin đánh giá' });
     }
   },
 
   // Update review
   update: async (req, res) => {
     try {
-      // Validate input
-      await body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5').run(req);
-      await body('comment').optional().isString().withMessage('Comment must be a string').run(req);
-      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array() 
+        });
       }
-
-      const review = await Review.findById(req.params.id);
+      
+      const reviewId = req.params.id;
+      const { rating, comment } = req.body;
+      const userId = req.user.id;
+      
+      // Check if review exists
+      const review = await Review.findById(reviewId);
       if (!review) {
-        return res.status(404).json({ message: 'Review not found' });
+        return res.status(404).json({ message: 'Không tìm thấy đánh giá' });
       }
-
-      // Check authorization
-      if (req.user.role_id !== 3 && req.user.id !== review.user_id) {
-        return res.status(403).json({ message: 'Not authorized to update this review' });
+      
+      // Check if the review belongs to the current user
+      if (review.user_id !== userId) {
+        return res.status(403).json({ message: 'Bạn không có quyền cập nhật đánh giá này' });
       }
-
-      const updated = await Review.update(req.params.id, {
-        rating: req.body.rating,
-        comment: req.body.comment
+      
+      // Update review
+      const success = await Review.update(reviewId, { rating, comment });
+      
+      if (!success) {
+        return res.status(400).json({ message: 'Cập nhật đánh giá thất bại' });
+      }
+      
+      // Get updated review
+      const updatedReview = await Review.findById(reviewId);
+      
+      res.json({
+        message: 'Cập nhật đánh giá thành công',
+        data: updatedReview
       });
-
-      if (!updated) {
-        return res.status(404).json({ message: 'Review not found' });
-      }
-
-      res.json({ message: 'Review updated successfully' });
     } catch (error) {
-      console.error('Update review error:', error);
-      res.status(500).json({ message: 'Error updating review' });
+      console.error('Lỗi cập nhật đánh giá:', error);
+      res.status(500).json({ message: 'Lỗi khi cập nhật đánh giá' });
     }
   },
 
   // Delete review
   delete: async (req, res) => {
     try {
-      const review = await Review.findById(req.params.id);
+      const reviewId = req.params.id;
+      const userId = req.user.id;
+      
+      // Check if review exists
+      const review = await Review.findById(reviewId);
       if (!review) {
-        return res.status(404).json({ message: 'Review not found' });
+        return res.status(404).json({ message: 'Không tìm thấy đánh giá' });
       }
-
-      // Check authorization
-      if (req.user.role_id !== 3 && req.user.id !== review.user_id) {
-        return res.status(403).json({ message: 'Not authorized to delete this review' });
+      
+      // Check if the review belongs to the current user or user is admin
+      if (review.user_id !== userId && req.user.role_id !== 3) {
+        return res.status(403).json({ message: 'Bạn không có quyền xóa đánh giá này' });
       }
-
-      await Review.delete(req.params.id);
-      res.json({ message: 'Review deleted successfully' });
+      
+      // Delete review
+      const success = await Review.delete(reviewId);
+      
+      res.json({
+        message: 'Xóa đánh giá thành công'
+      });
     } catch (error) {
-      console.error('Delete review error:', error);
-      res.status(500).json({ message: 'Error deleting review' });
+      console.error('Lỗi xóa đánh giá:', error);
+      res.status(500).json({ message: 'Lỗi khi xóa đánh giá' });
     }
   },
 
-  // Get course review statistics
+  // Get statistics for a course's reviews
   getCourseStats: async (req, res) => {
     try {
       const { courseId } = req.params;
-
+      
       // Check if course exists
       const course = await Course.findById(courseId);
       if (!course) {
-        return res.status(404).json({ message: 'Course not found' });
+        return res.status(404).json({ message: 'Không tìm thấy khóa học' });
       }
-
-      const stats = await Review.getCourseStats(courseId);
-      res.json({ stats });
+      
+      const stats = await Review.getStatsByCourse(courseId);
+      
+      res.json({
+        message: 'Lấy thống kê đánh giá khóa học thành công',
+        data: stats
+      });
     } catch (error) {
-      console.error('Get course stats error:', error);
-      res.status(500).json({ message: 'Error fetching course statistics' });
+      console.error('Lỗi lấy thống kê đánh giá khóa học:', error);
+      res.status(500).json({ message: 'Lỗi khi lấy thống kê đánh giá khóa học' });
     }
   }
 };
 
-module.exports = reviewController; 
+module.exports = {
+  ...reviewController,
+  reviewValidation
+}; 

@@ -2,24 +2,87 @@ const Banner = require('../models/Banner');
 const Image = require('../models/Image');
 const { body, validationResult } = require('express-validator');
 
-exports.create = async (req, res) => {
-  try {
-    // Validate input
-    await body('image_id').notEmpty().isInt().withMessage('Image ID is required').run(req);
-    await body('title').optional().trim().run(req);
-    await body('position').notEmpty().withMessage('Position is required').run(req);
-    await body('start_date').optional().isISO8601().toDate().withMessage('Invalid start date').run(req);
-    await body('end_date').optional().isISO8601().toDate().withMessage('Invalid end date').run(req);
+// Validation rules
+const bannerValidation = [
+  body('image_id')
+    .notEmpty()
+    .withMessage('ID hình ảnh là bắt buộc')
+    .isInt()
+    .withMessage('ID hình ảnh phải là số nguyên'),
+  
+  body('title')
+    .optional()
+    .trim(),
+  
+  body('position')
+    .notEmpty()
+    .withMessage('Vị trí banner là bắt buộc'),
+  
+  body('start_date')
+    .optional()
+    .isISO8601()
+    .withMessage('Ngày bắt đầu không hợp lệ')
+    .toDate(),
+  
+  body('end_date')
+    .optional()
+    .isISO8601()
+    .withMessage('Ngày kết thúc không hợp lệ')
+    .toDate(),
+  
+  body('is_active')
+    .optional()
+    .isBoolean()
+    .withMessage('Trạng thái kích hoạt phải là boolean')
+];
 
+// Validation rules for update
+const updateValidation = [
+  body('image_id')
+    .optional()
+    .isInt()
+    .withMessage('ID hình ảnh phải là số nguyên'),
+  
+  body('title')
+    .optional()
+    .trim(),
+  
+  body('position')
+    .optional(),
+  
+  body('is_active')
+    .optional()
+    .isBoolean()
+    .withMessage('Trạng thái kích hoạt phải là boolean'),
+  
+  body('start_date')
+    .optional()
+    .isISO8601()
+    .withMessage('Ngày bắt đầu không hợp lệ')
+    .toDate(),
+  
+  body('end_date')
+    .optional()
+    .isISO8601()
+    .withMessage('Ngày kết thúc không hợp lệ')
+    .toDate()
+];
+
+// Create new banner
+const create = async (req, res) => {
+  try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
+      });
     }
 
     // Check if image exists
     const imageExists = await Image.exists(req.body.image_id);
     if (!imageExists) {
-      return res.status(404).json({ message: 'Image not found' });
+      return res.status(404).json({ message: 'Không tìm thấy hình ảnh' });
     }
 
     // Validate date range
@@ -27,7 +90,7 @@ exports.create = async (req, res) => {
       const startDate = new Date(req.body.start_date);
       const endDate = new Date(req.body.end_date);
       if (startDate > endDate) {
-        return res.status(400).json({ message: 'Start date must be before end date' });
+        return res.status(400).json({ message: 'Ngày bắt đầu phải trước ngày kết thúc' });
       }
     }
 
@@ -35,15 +98,17 @@ exports.create = async (req, res) => {
     const banner = await Banner.findById(bannerId);
 
     res.status(201).json({
-      message: 'Banner created successfully',
-      banner
+      message: 'Tạo banner thành công',
+      data: banner
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi tạo banner:', error);
+    res.status(500).json({ message: 'Lỗi khi tạo banner' });
   }
 };
 
-exports.getAll = async (req, res) => {
+// Get all banners with filters
+const getAll = async (req, res) => {
   try {
     const filters = {
       position: req.query.position,
@@ -54,58 +119,81 @@ exports.getAll = async (req, res) => {
     };
 
     const result = await Banner.findAll(filters);
-    res.json(result);
+    res.json({
+      message: 'Lấy danh sách banner thành công',
+      data: result
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi lấy danh sách banner:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách banner' });
   }
 };
 
-exports.getById = async (req, res) => {
+// Get banner by ID
+const getById = async (req, res) => {
   try {
     const banner = await Banner.findById(req.params.id);
     if (!banner) {
-      return res.status(404).json({ message: 'Banner not found' });
+      return res.status(404).json({ message: 'Không tìm thấy banner' });
     }
-    res.json({ banner });
+    res.json({
+      message: 'Lấy thông tin banner thành công',
+      data: banner
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi lấy thông tin banner:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy thông tin banner' });
   }
 };
 
-exports.getByPosition = async (req, res) => {
+// Get banners by position
+const getByPosition = async (req, res) => {
   try {
-    const banners = await Banner.getActiveByPosition(req.params.position);
-    res.json({ banners });
+    const position = req.params.position;
+    
+    // Check if current_date is provided in query
+    let date = undefined;
+    if (req.query.date) {
+      date = new Date(req.query.date);
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: 'Định dạng ngày không hợp lệ' });
+      }
+    } else {
+      date = new Date(); // Use current date if not provided
+    }
+    
+    const banners = await Banner.getActiveByPosition(position, date);
+    res.json({
+      message: 'Lấy danh sách banner theo vị trí thành công',
+      data: banners
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi lấy banner theo vị trí:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy banner theo vị trí: ' + error.message });
   }
 };
 
-exports.update = async (req, res) => {
+// Update banner
+const update = async (req, res) => {
   try {
-    // Validate input
-    await body('image_id').optional().isInt().withMessage('Invalid image ID').run(req);
-    await body('title').optional().trim().run(req);
-    await body('position').optional().run(req);
-    await body('is_active').optional().isBoolean().withMessage('Invalid active status').run(req);
-    await body('start_date').optional().isISO8601().toDate().withMessage('Invalid start date').run(req);
-    await body('end_date').optional().isISO8601().toDate().withMessage('Invalid end date').run(req);
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array() 
+      });
     }
 
     const banner = await Banner.findById(req.params.id);
     if (!banner) {
-      return res.status(404).json({ message: 'Banner not found' });
+      return res.status(404).json({ message: 'Không tìm thấy banner' });
     }
 
     // Check if image exists if image_id is being updated
     if (req.body.image_id) {
       const imageExists = await Image.exists(req.body.image_id);
       if (!imageExists) {
-        return res.status(404).json({ message: 'Image not found' });
+        return res.status(404).json({ message: 'Không tìm thấy hình ảnh' });
       }
     }
 
@@ -114,7 +202,7 @@ exports.update = async (req, res) => {
       const startDate = new Date(req.body.start_date);
       const endDate = new Date(req.body.end_date);
       if (startDate > endDate) {
-        return res.status(400).json({ message: 'Start date must be before end date' });
+        return res.status(400).json({ message: 'Ngày bắt đầu phải trước ngày kết thúc' });
       }
     }
 
@@ -122,24 +210,96 @@ exports.update = async (req, res) => {
     const updatedBanner = await Banner.findById(req.params.id);
 
     res.json({
-      message: 'Banner updated successfully',
-      banner: updatedBanner
+      message: 'Cập nhật banner thành công',
+      data: updatedBanner
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi cập nhật banner:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật banner' });
   }
 };
 
-exports.delete = async (req, res) => {
+// Delete banner
+const deleteBanner = async (req, res) => {
   try {
     const banner = await Banner.findById(req.params.id);
     if (!banner) {
-      return res.status(404).json({ message: 'Banner not found' });
+      return res.status(404).json({ message: 'Không tìm thấy banner' });
     }
 
     await Banner.delete(req.params.id);
-    res.json({ message: 'Banner deleted successfully' });
+    res.json({ message: 'Xóa banner thành công' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi xóa banner:', error);
+    res.status(500).json({ message: 'Lỗi khi xóa banner' });
   }
+};
+
+// Toggle banner active status
+const updateStatus = async (req, res) => {
+  try {
+    const banner = await Banner.findById(req.params.id);
+    if (!banner) {
+      return res.status(404).json({ message: 'Không tìm thấy banner' });
+    }
+
+    const { is_active } = req.body;
+    if (is_active === undefined) {
+      return res.status(400).json({ message: 'Trạng thái hoạt động (is_active) là bắt buộc' });
+    }
+
+    const updated = await Banner.updateStatus(req.params.id, is_active);
+    
+    if (updated) {
+      const updatedBanner = await Banner.findById(req.params.id);
+      res.json({
+        message: 'Cập nhật trạng thái banner thành công',
+        data: updatedBanner
+      });
+    } else {
+      res.status(400).json({ message: 'Cập nhật trạng thái banner thất bại' });
+    }
+  } catch (error) {
+    console.error('Lỗi cập nhật trạng thái banner:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật trạng thái banner: ' + error.message });
+  }
+};
+
+// Count banners by position
+const countByPosition = async (req, res) => {
+  try {
+    const { position } = req.params;
+    const onlyActive = req.query.active === 'true';
+    
+    if (!position) {
+      return res.status(400).json({ message: 'Vị trí banner là bắt buộc' });
+    }
+    
+    const count = await Banner.countByPosition(position, onlyActive);
+    
+    res.json({
+      message: 'Đếm banner theo vị trí thành công',
+      data: {
+        position,
+        onlyActive,
+        count
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi đếm banner theo vị trí:', error);
+    res.status(500).json({ message: 'Lỗi khi đếm banner theo vị trí: ' + error.message });
+  }
+};
+
+module.exports = {
+  create,
+  getAll,
+  getById,
+  getByPosition,
+  update,
+  delete: deleteBanner,
+  updateStatus,
+  countByPosition,
+  bannerValidation,
+  updateValidation
 }; 

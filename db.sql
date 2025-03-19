@@ -347,6 +347,19 @@ CREATE TABLE coupon_courses (
     UNIQUE (coupon_id, course_id)                       -- Ràng buộc duy nhất: mỗi mã giảm giá chỉ liên kết với một khóa học một lần
 );
 
+-- 26. Bảng certificates: Quản lý chứng chỉ của học viên
+CREATE TABLE certificates (
+    id INT AUTO_INCREMENT PRIMARY KEY,                  -- Mã định danh duy nhất cho chứng chỉ, tự động tăng
+    user_id INT NOT NULL,                               -- ID của học viên nhận chứng chỉ, không được để trống
+    course_id INT NOT NULL,                             -- ID của khóa học hoàn thành, không được để trống
+    certificate_number VARCHAR(100) UNIQUE,             -- Số chứng chỉ duy nhất, không được trùng
+    issue_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,     -- Ngày cấp chứng chỉ, tự động ghi nhận thời điểm hiện tại
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,     -- Thời gian tạo chứng chỉ, tự động ghi nhận thời điểm hiện tại
+    deleted_at TIMESTAMP,                               -- Thời gian xóa chứng chỉ (soft delete), có thể để trống
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, -- Khóa ngoại tham chiếu đến bảng users, nếu user bị xóa thì chứng chỉ cũng bị xóa
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE -- Khóa ngoại tham chiếu đến bảng courses, nếu khóa học bị xóa thì chứng chỉ cũng bị xóa
+);
+
 -- Thêm các chỉ mục (index) để tối ưu hóa tìm kiếm
 CREATE INDEX idx_users_email ON users(email);           -- Chỉ mục cho email người dùng để tăng tốc tìm kiếm
 CREATE INDEX idx_courses_title ON courses(title);       -- Chỉ mục cho tiêu đề khóa học để tăng tốc tìm kiếm

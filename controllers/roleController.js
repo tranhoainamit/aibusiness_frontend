@@ -1,47 +1,71 @@
 const Role = require('../models/Role');
 const { body, validationResult } = require('express-validator');
 
+// Validation rules
+const roleValidation = [
+  body('name')
+    .notEmpty()
+    .withMessage('Tên vai trò là bắt buộc')
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('Tên vai trò không được vượt quá 50 ký tự'),
+  
+  body('description')
+    .optional()
+    .trim(),
+  
+  body('permissions')
+    .optional()
+    .isArray()
+    .withMessage('Danh sách quyền phải là một mảng')
+];
+
 // Get all roles with their permissions
-exports.getAll = async (req, res) => {
+const getAll = async (req, res) => {
   try {
     const roles = await Role.findAll();
-    res.json({ roles });
+    res.json({
+      message: 'Lấy danh sách vai trò thành công',
+      data: roles
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi lấy danh sách vai trò:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách vai trò' });
   }
 };
 
 // Get role by ID
-exports.getById = async (req, res) => {
+const getById = async (req, res) => {
   try {
     const role = await Role.findById(req.params.id);
     if (!role) {
-      return res.status(404).json({ message: 'Role not found' });
+      return res.status(404).json({ message: 'Không tìm thấy vai trò' });
     }
-    res.json({ role });
+    res.json({
+      message: 'Lấy thông tin vai trò thành công',
+      data: role
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi lấy thông tin vai trò:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy thông tin vai trò' });
   }
 };
 
 // Create new role
-exports.create = async (req, res) => {
+const create = async (req, res) => {
   try {
-    // Validate input
-    await body('name').notEmpty().trim().withMessage('Name is required')
-      .isLength({ max: 50 }).withMessage('Name must be at most 50 characters').run(req);
-    await body('description').optional().trim().run(req);
-    await body('permissions').optional().isArray().withMessage('Permissions must be an array').run(req);
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array()
+      });
     }
 
     // Check if role name already exists
     const existingRole = await Role.findByName(req.body.name);
     if (existingRole) {
-      return res.status(400).json({ message: 'Role name already exists' });
+      return res.status(400).json({ message: 'Tên vai trò đã tồn tại' });
     }
 
     // Create role
@@ -57,39 +81,37 @@ exports.create = async (req, res) => {
 
     const role = await Role.findById(roleId);
     res.status(201).json({
-      message: 'Role created successfully',
-      role
+      message: 'Tạo vai trò thành công',
+      data: role
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi tạo vai trò:', error);
+    res.status(500).json({ message: 'Lỗi khi tạo vai trò' });
   }
 };
 
 // Update role
-exports.update = async (req, res) => {
+const update = async (req, res) => {
   try {
-    // Validate input
-    await body('name').notEmpty().trim().withMessage('Name is required')
-      .isLength({ max: 50 }).withMessage('Name must be at most 50 characters').run(req);
-    await body('description').optional().trim().run(req);
-    await body('permissions').optional().isArray().withMessage('Permissions must be an array').run(req);
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array()
+      });
     }
 
     // Check if role exists
     const role = await Role.findById(req.params.id);
     if (!role) {
-      return res.status(404).json({ message: 'Role not found' });
+      return res.status(404).json({ message: 'Không tìm thấy vai trò' });
     }
 
     // Check if new name already exists (excluding current role)
     if (req.body.name !== role.name) {
       const existingRole = await Role.findByName(req.body.name);
       if (existingRole) {
-        return res.status(400).json({ message: 'Role name already exists' });
+        return res.status(400).json({ message: 'Tên vai trò đã tồn tại' });
       }
     }
 
@@ -106,73 +128,91 @@ exports.update = async (req, res) => {
 
     const updatedRole = await Role.findById(req.params.id);
     res.json({
-      message: 'Role updated successfully',
-      role: updatedRole
+      message: 'Cập nhật vai trò thành công',
+      data: updatedRole
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi cập nhật vai trò:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật vai trò' });
   }
 };
 
 // Delete role
-exports.delete = async (req, res) => {
+const deleteRole = async (req, res) => {
   try {
     // Check if role exists
     const role = await Role.findById(req.params.id);
     if (!role) {
-      return res.status(404).json({ message: 'Role not found' });
+      return res.status(404).json({ message: 'Không tìm thấy vai trò' });
     }
 
     // Check if role has users
     const usersCount = await Role.getUsersCount(req.params.id);
     if (usersCount > 0) {
       return res.status(400).json({ 
-        message: 'Cannot delete role with associated users. Please reassign users to different roles first.' 
+        message: 'Không thể xóa vai trò đang được gán cho người dùng. Vui lòng gán người dùng sang vai trò khác trước.' 
       });
     }
 
     await Role.delete(req.params.id);
-    res.json({ message: 'Role deleted successfully' });
+    res.json({ message: 'Xóa vai trò thành công' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi xóa vai trò:', error);
+    res.status(500).json({ message: 'Lỗi khi xóa vai trò' });
   }
 };
 
 // Get role permissions
-exports.getPermissions = async (req, res) => {
+const getPermissions = async (req, res) => {
   try {
     const permissions = await Role.getPermissions(req.params.id);
-    res.json({ permissions });
+    res.json({
+      message: 'Lấy danh sách quyền thành công',
+      data: permissions
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi lấy danh sách quyền:', error);
+    res.status(500).json({ message: 'Lỗi khi lấy danh sách quyền' });
   }
 };
 
 // Update role permissions
-exports.updatePermissions = async (req, res) => {
+const updatePermissions = async (req, res) => {
   try {
-    // Validate input
-    await body('permissions').isArray().withMessage('Permissions must be an array').run(req);
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ 
+        message: 'Dữ liệu không hợp lệ',
+        errors: errors.array()
+      });
     }
 
     // Check if role exists
     const role = await Role.findById(req.params.id);
     if (!role) {
-      return res.status(404).json({ message: 'Role not found' });
+      return res.status(404).json({ message: 'Không tìm thấy vai trò' });
     }
 
     await Role.addPermissions(req.params.id, req.body.permissions);
     
     const updatedRole = await Role.findById(req.params.id);
     res.json({
-      message: 'Role permissions updated successfully',
-      role: updatedRole
+      message: 'Cập nhật quyền vai trò thành công',
+      data: updatedRole
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Lỗi cập nhật quyền vai trò:', error);
+    res.status(500).json({ message: 'Lỗi khi cập nhật quyền vai trò' });
   }
+};
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  delete: deleteRole,
+  getPermissions,
+  updatePermissions,
+  roleValidation
 }; 

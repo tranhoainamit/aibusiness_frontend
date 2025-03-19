@@ -1,8 +1,9 @@
 const db = require('../config/database');
 
-class Session {
+// Model phiên đăng nhập
+const Session = {
   // Tạo phiên mới
-  static async create(sessionData) {
+  create: async (sessionData) => {
     try {
       const {
         user_id,
@@ -23,12 +24,13 @@ class Session {
 
       return result.insertId;
     } catch (error) {
+      console.error('Lỗi khi tạo phiên đăng nhập:', error);
       throw new Error('Lỗi khi tạo phiên: ' + error.message);
     }
-  }
+  },
 
   // Tìm phiên theo ID
-  static async findById(id) {
+  findById: async (id) => {
     try {
       const [rows] = await db.execute(
         'SELECT * FROM sessions WHERE id = ?',
@@ -36,12 +38,13 @@ class Session {
       );
       return rows[0];
     } catch (error) {
+      console.error('Lỗi khi tìm phiên theo ID:', error);
       throw new Error('Lỗi khi tìm phiên: ' + error.message);
     }
-  }
+  },
 
   // Tìm phiên theo token
-  static async findByToken(token) {
+  findByToken: async (token) => {
     try {
       const [rows] = await db.execute(
         'SELECT * FROM sessions WHERE token = ?',
@@ -49,12 +52,13 @@ class Session {
       );
       return rows[0];
     } catch (error) {
+      console.error('Lỗi khi tìm phiên theo token:', error);
       throw new Error('Lỗi khi tìm phiên theo token: ' + error.message);
     }
-  }
+  },
 
   // Lấy tất cả phiên của người dùng
-  static async findByUserId(userId, filters = {}) {
+  findByUserId: async (userId, filters = {}) => {
     try {
       let query = 'SELECT * FROM sessions WHERE user_id = ?';
       const params = [userId];
@@ -92,12 +96,13 @@ class Session {
         totalPages: Math.ceil(countResult[0].total / limit)
       };
     } catch (error) {
+      console.error('Lỗi khi lấy phiên của người dùng:', error);
       throw new Error('Lỗi khi lấy phiên của người dùng: ' + error.message);
     }
-  }
+  },
 
   // Cập nhật thời gian hoạt động cuối
-  static async updateLastActivity(id) {
+  updateLastActivity: async (id) => {
     try {
       const [result] = await db.execute(
         'UPDATE sessions SET last_activity_at = NOW() WHERE id = ?',
@@ -105,12 +110,13 @@ class Session {
       );
       return result.affectedRows > 0;
     } catch (error) {
+      console.error('Lỗi khi cập nhật thời gian hoạt động:', error);
       throw new Error('Lỗi khi cập nhật thời gian hoạt động: ' + error.message);
     }
-  }
+  },
 
   // Vô hiệu hóa phiên
-  static async deactivate(id, userId) {
+  deactivate: async (id, userId) => {
     try {
       const [result] = await db.execute(
         'UPDATE sessions SET is_active = false WHERE id = ? AND user_id = ?',
@@ -118,12 +124,13 @@ class Session {
       );
       return result.affectedRows > 0;
     } catch (error) {
+      console.error('Lỗi khi vô hiệu hóa phiên:', error);
       throw new Error('Lỗi khi vô hiệu hóa phiên: ' + error.message);
     }
-  }
+  },
 
   // Vô hiệu hóa tất cả phiên của người dùng (trừ phiên hiện tại)
-  static async deactivateAllExceptCurrent(userId, currentSessionId) {
+  deactivateAllExceptCurrent: async (userId, currentSessionId) => {
     try {
       const [result] = await db.execute(
         'UPDATE sessions SET is_active = false WHERE user_id = ? AND id != ?',
@@ -131,24 +138,26 @@ class Session {
       );
       return result.affectedRows;
     } catch (error) {
+      console.error('Lỗi khi vô hiệu hóa tất cả phiên:', error);
       throw new Error('Lỗi khi vô hiệu hóa tất cả phiên: ' + error.message);
     }
-  }
+  },
 
   // Xóa phiên hết hạn
-  static async deleteExpired() {
+  deleteExpired: async () => {
     try {
       const [result] = await db.execute(
         'DELETE FROM sessions WHERE expires_at < NOW()'
       );
       return result.affectedRows;
     } catch (error) {
+      console.error('Lỗi khi xóa phiên hết hạn:', error);
       throw new Error('Lỗi khi xóa phiên hết hạn: ' + error.message);
     }
-  }
+  },
 
   // Kiểm tra phiên tồn tại và còn hiệu lực
-  static async isValid(token) {
+  isValid: async (token) => {
     try {
       const [rows] = await db.execute(
         `SELECT id FROM sessions 
@@ -158,12 +167,13 @@ class Session {
       );
       return rows.length > 0;
     } catch (error) {
+      console.error('Lỗi khi kiểm tra phiên:', error);
       throw new Error('Lỗi khi kiểm tra phiên: ' + error.message);
     }
-  }
+  },
 
   // Kiểm tra phiên thuộc về người dùng
-  static async belongsToUser(id, userId) {
+  belongsToUser: async (id, userId) => {
     try {
       const [rows] = await db.execute(
         'SELECT id FROM sessions WHERE id = ? AND user_id = ?',
@@ -171,12 +181,13 @@ class Session {
       );
       return rows.length > 0;
     } catch (error) {
+      console.error('Lỗi khi kiểm tra quyền sở hữu phiên:', error);
       throw new Error('Lỗi khi kiểm tra quyền sở hữu phiên: ' + error.message);
     }
-  }
+  },
 
   // Lấy thông tin chi tiết phiên bao gồm thông tin người dùng
-  static async getSessionDetails(id) {
+  getSessionDetails: async (id) => {
     try {
       const [rows] = await db.execute(
         `SELECT s.*, u.email, u.full_name 
@@ -187,9 +198,10 @@ class Session {
       );
       return rows[0];
     } catch (error) {
+      console.error('Lỗi khi lấy thông tin chi tiết phiên:', error);
       throw new Error('Lỗi khi lấy thông tin chi tiết phiên: ' + error.message);
     }
   }
-}
+};
 
 module.exports = Session; 
